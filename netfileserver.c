@@ -8,11 +8,34 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <ctype.h>
+
+#define MIN_BUFF_SIZE 250
 
 void error(const char *msg) {
     fprintf(stderr,"%s L:%d\n",msg,__LINE__);
     exit(1);
 }
+
+int getNum(char * buffer, char ** begin, char ** end){
+  int size = 0;
+  while(*(*end) != ',') {
+    if(*end == buffer + MIN_BUFF_SIZE - 3)
+      error("ERROR Size too Large");
+    (*end)++;
+  }
+  *(*end) = '\0';
+  size = atoi(*begin);
+  *(*end) = ',';
+  return size;
+}
+
+char * getMalcMsg(){
+  //Take whatever it needs to return the associated data malloced
+  return NULL;
+}
+
+//size, op, <permissions>, fd, data
 
 /*
  * __clientHandler()__
@@ -25,26 +48,85 @@ void error(const char *msg) {
  *    N/A
  */
 void * clientHandler(void * sock){
-  char buffer[256]; //Buffer for reading input and writing output
-  int n; //For testing read-in length, etc...
+  char buffer[MIN_BUFF_SIZE]; //Buffer for reading input and writing output
+  int status = 0; //For testing read-in length, etc...
 
   //Zero out buffer and read message into buffer
-  bzero(buffer,256);
-  n = read(*((int*) sock),buffer,255);
-  buffer[255] = '\0'; //SET LAST BYTE TO NULL TO END STRING
-  if (n < 0) error("ERROR reading from socket");
+  bzero(buffer,MIN_BUFF_SIZE);
+
+  //Ensure Minimum is read in (Minimum Packet size == 250)
+  int amount = MIN_BUFF_SIZE;
+  int offset = status;
+  while(amount > 0) {
+    offset += status;
+    status = read (*((int*) sock), buffer+offset, amount);
+    if (status >= 0) {
+      amount -= status;
+    } else {
+      error("ERROR reading from socket");
+    }
+  }
+
+  /* _____READ META_DATA_____ */
+  int size = 0, fd = 0;
+  char op = '\0';
+  //char * data;
+
+  //read size
+  char * begin = buffer;
+  char * end = buffer;
+  size = getNum(buffer, &begin, &end);
+
+  //read and decide op
+  end++;
+  op = *end;
+  end += 2;
+  begin = end;
+
+  switch(op){
+    case 'o': //Open
+      printf("Op: open() ");
+      //getMalcMsg()
+      break;
+
+    case 'r': //Read
+      printf("Op: read() ");
+      fd = getNum(buffer, &begin, &end); //read fd
+      //getMalcMsg()
+      break;
+
+    case 'w': //Write
+      printf("Op: write() ");
+      fd = getNum(buffer, &begin, &end); //read fd
+      //getMalcMsg()
+      break;
+
+    case 'c': //Close
+      printf("Op: close() ");
+      fd = getNum(buffer, &begin, &end); //read fd
+      //getMalcMsg()
+      break;
+
+    default:
+      error("ERROR Not an OP");
+  }
+
+  //malloc and send rest to proper op function
+
 
   //print Message from client
-  printf("\nClient Message: %s",buffer);
+  printf("Size: %d, Fd: %d Msg: %s\n",size, fd, end);
+
+
 
   //Take a message into buffer from stdin
   printf("\nPlease enter returning message: ");
-  bzero(buffer,256);
-  fgets(buffer,255,stdin);
+  bzero(buffer,MIN_BUFF_SIZE);
+  fgets(buffer,MIN_BUFF_SIZE,stdin);
 
   //Write the message back to the client
-  n = write(*((int*) sock),buffer,255);
-  if (n < 0)
+  status = write(*((int*) sock),buffer,MIN_BUFF_SIZE);
+  if (status < 0)
        error("ERROR writing to socket");
 
   close(*((int*)sock));
@@ -83,7 +165,7 @@ int main(int argc, char *argv[]) {
      //Sets up socket
      if (bind(baseSock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
           error("ERROR on binding");
-     listen(baseSock,5); //Preps to accept clients
+     listen(baseSock,5); //Preps to accept clients (only holds 5 clients in queue)
      clilen = sizeof(cli_addr);
 
      while(1 == 1){

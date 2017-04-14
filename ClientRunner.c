@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr; //Info for setting up socket
     struct hostent *server; //Info for setting up socket
 
-    char buffer[256]; //For what to send to server
+    char buffer[250]; //For what to send to server
 
     if (argc != 3) { //Prints usage
        fprintf(stderr,"usage %s hostname port\n", argv[0]);
@@ -60,19 +60,19 @@ int main(int argc, char *argv[])
 
     //Take a message into buffer from stdin
     printf("Please enter the message: ");
-    bzero(buffer,256);
-    fgets(buffer,255,stdin);
+    bzero(buffer,250);
+    fgets(buffer,250,stdin);
 
     //Write this buffer to the socket
-    n = write(sockfd,buffer,strlen(buffer));
+    n = write(sockfd,buffer,250);
     if (n < 0)
          error("ERROR writing to socket");
 
     //Zero out the buffer for a read
-    bzero(buffer,256);
+    bzero(buffer,250);
 
     //Read from the socket into the buffer
-    n = read(sockfd,buffer,255);
+    n = read(sockfd,buffer,250);
     if (n < 0)
          error("ERROR reading from socket");
 
