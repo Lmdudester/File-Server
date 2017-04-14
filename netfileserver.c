@@ -10,28 +10,27 @@
 #include <netinet/in.h>
 #include <ctype.h>
 
-#define MIN_BUFF_SIZE 250
+#define MIN_BUFF_SIZE 5
 
 void error(const char *msg) {
     fprintf(stderr,"%s L:%d\n",msg,__LINE__);
     exit(1);
 }
 
-int getNum(char * buffer, char ** begin, char ** end){
-  int size = 0;
-  while(*(*end) != ',') {
-    if(*end == buffer + MIN_BUFF_SIZE - 3)
-      error("ERROR Size too Large");
-    (*end)++;
+char * tryNum(char * ascii, int max_size) {
+  while(*ascii != ','){
+    if(max_size == 0)
+      return NULL;
+    ascii++;
+    max_size--;
   }
-  *(*end) = '\0';
-  size = atoi(*begin);
-  *(*end) = ',';
-  return size;
+
+  return ascii;
 }
 
 char * getMalcMsg(){
   //Take whatever it needs to return the associated data malloced
+
   return NULL;
 }
 
@@ -48,18 +47,70 @@ char * getMalcMsg(){
  *    N/A
  */
 void * clientHandler(void * sock){
-  char buffer[MIN_BUFF_SIZE]; //Buffer for reading input and writing output
-  int status = 0; //For testing read-in length, etc...
-
+  char buffer[250]; //Buffer for reading input and writing output
   //Zero out buffer and read message into buffer
-  bzero(buffer,MIN_BUFF_SIZE);
+  bzero(buffer,250);
 
-  //Ensure Minimum is read in (Minimum Packet size == 250)
-  int amount = MIN_BUFF_SIZE;
-  int offset = status;
+  //Create buffer to read Packet Size
+  char * init_buffer = malloc(1);
+  if(init_buffer == NULL)
+    error("ERROR with malloc");
+
+  //Create and Initialize reading vars
+  int status, amount, total_Size = 0;
+  int offset = 0;
+  char * numEnd = NULL;
+
+  while(numEnd == NULL){ //While we still haven't found a comma
+    total_Size += MIN_BUFF_SIZE;
+
+    //Realloc to ensure you have enough room
+    init_buffer = realloc(init_buffer, total_Size);
+    if(init_buffer == NULL)
+      error("ERROR with realloc");
+
+
+    //Read bytes into init_buffer
+    amount = MIN_BUFF_SIZE;
+    status = 0;
+    while(amount > 0) { //Ensure MIN_BUFF_SIZE bytes were read...
+      status = read (*((int*) sock), init_buffer+offset, amount);
+      if (status < 0)
+        error("ERROR reading from socket");
+      amount -= status;
+      offset += status;
+    }
+
+    //See if we found the end of the number yet
+    numEnd = tryNum(init_buffer, total_Size);
+  }
+
+  //Read size into msgSize
+  *numEnd = '\0';
+  int msgSize = atoi(init_buffer);
+  *numEnd = ',';
+
+  printf("Size: %d\n", msgSize);
+
+  //Malloc for the rest of the message (includng the comma)
+  char * msg = malloc(msgSize*sizeof(char));
+  if(msg == NULL)
+    error("ERROR with malloc");
+
+  int excess_len = total_Size - (numEnd - init_buffer);
+
+  //Copy extra data already read
+  msg = memcpy(msg, numEnd, excess_len);
+
+  printf("Msg before: %s\n", msg);
+
+  //Read rest of message into malloced msg char*
+  amount = msgSize - excess_len;
+  offset = excess_len;
+  status = 0;
   while(amount > 0) {
     offset += status;
-    status = read (*((int*) sock), buffer+offset, amount);
+    status = read (*((int*) sock), msg+offset, amount);
     if (status >= 0) {
       amount -= status;
     } else {
@@ -67,21 +118,23 @@ void * clientHandler(void * sock){
     }
   }
 
-  /* _____READ META_DATA_____ */
-  int size = 0, fd = 0;
+  printf("Msg: %s\n", msg);
+
+  //Free the buffer now that we're done with it
+  free(init_buffer);
+
+  char * ptr = msg;
+
+
+  // _____READ META_DATA_____
+  int fd = 0;
   char op = '\0';
   //char * data;
 
-  //read size
-  char * begin = buffer;
-  char * end = buffer;
-  size = getNum(buffer, &begin, &end);
-
   //read and decide op
-  end++;
-  op = *end;
-  end += 2;
-  begin = end;
+  ptr++;
+  op = *ptr;
+  ptr += 2;
 
   switch(op){
     case 'o': //Open
@@ -91,19 +144,31 @@ void * clientHandler(void * sock){
 
     case 'r': //Read
       printf("Op: read() ");
-      fd = getNum(buffer, &begin, &end); //read fd
+      numEnd = tryNum(ptr, msgSize - 3); //read fd
+      if(numEnd == NULL);
+      *numEnd = '\0';
+      fd = atoi(ptr);
+      *numEnd = ',';
       //getMalcMsg()
       break;
 
     case 'w': //Write
       printf("Op: write() ");
-      fd = getNum(buffer, &begin, &end); //read fd
+      numEnd = tryNum(ptr, msgSize - 3); //read fd
+      if(numEnd == NULL);
+      *numEnd = '\0';
+      fd = atoi(ptr);
+      *numEnd = ',';
       //getMalcMsg()
       break;
 
     case 'c': //Close
       printf("Op: close() ");
-      fd = getNum(buffer, &begin, &end); //read fd
+      numEnd = tryNum(ptr, msgSize - 3); //read fd
+      if(numEnd == NULL);
+      *numEnd = '\0';
+      fd = atoi(ptr);
+      *numEnd = ',';
       //getMalcMsg()
       break;
 
@@ -111,21 +176,18 @@ void * clientHandler(void * sock){
       error("ERROR Not an OP");
   }
 
-  //malloc and send rest to proper op function
+  printf("Fd: %d\n", fd);
 
-
-  //print Message from client
-  printf("Size: %d, Fd: %d Msg: %s\n",size, fd, end);
-
-
+  //Free msg after use
+  free(msg);
 
   //Take a message into buffer from stdin
   printf("\nPlease enter returning message: ");
-  bzero(buffer,MIN_BUFF_SIZE);
-  fgets(buffer,MIN_BUFF_SIZE,stdin);
+  bzero(buffer,250);
+  fgets(buffer,250,stdin);
 
   //Write the message back to the client
-  status = write(*((int*) sock),buffer,MIN_BUFF_SIZE);
+  status = write(*((int*) sock),buffer,250);
   if (status < 0)
        error("ERROR writing to socket");
 
