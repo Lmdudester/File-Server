@@ -124,7 +124,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
  *              <msgsize> is the number of bytes in ",<error code>,<read data>"
  */
 char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
-  printf("Read():\nSize: %d\nNegFd: %d\nData: %s\n\n", msgSize, negfd, msg);
+  printf("Read():\nNegFd: %d\nSize: %d\nData: %s\n\n", msgSize, negfd, msg);
 
   *retMsgSize = 9;
   char * ret = malloc((*retMsgSize)*sizeof(char));
@@ -160,7 +160,7 @@ char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
  *              <msgsize> is the number of bytes in ",<error code>,w"
  */
 char * localWrite(int msgSize, char * msg, int negfd, int * retMsgSize){
-  printf("Write():\nSize: %d\nNegFd: %d\nData: %s\n\n", msgSize, negfd, msg);
+  printf("Write():\nNegFd: %d\nSize: %d\nData: %s\n\n", msgSize, negfd, msg);
 
   *retMsgSize = 10;
   char * ret = malloc((*retMsgSize)*sizeof(char));
@@ -325,7 +325,7 @@ void * clientHandler(void * sock){
       *numEnd = '\0';
       fd = atoi(ptr);
       *numEnd = ',';
-      returningMsg = localRead(msgSize - (numEnd - msg), numEnd + 1, fd, &retMsgSize);
+      returningMsg = localRead(msgSize - (numEnd - msg) - 1, numEnd + 1, fd, &retMsgSize);
       break;
 
     case 'w': //Write
@@ -335,7 +335,7 @@ void * clientHandler(void * sock){
       *numEnd = '\0';
       fd = atoi(ptr);
       *numEnd = ',';
-      returningMsg = localWrite(msgSize - (numEnd - msg), numEnd + 1, fd, &retMsgSize);
+      returningMsg = localWrite(msgSize - (numEnd - msg) - 1, numEnd + 1, fd, &retMsgSize);
       break;
 
     case 'c': //Close
