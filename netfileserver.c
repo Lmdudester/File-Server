@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <ctype.h>
+#include <errno.h>
 
 #define MIN_BUFF_SIZE 5
 
@@ -22,7 +23,7 @@
  *    - N/A
  */
 void regError(const char * msg, int line, int errNum) {
-    fprintf(stderr,"%s L:%d\n",msg,line);
+    fprintf(stderr,"%s ERRNO: \"%s\" L:%d\n",msg, strerror(errNum), line);
     exit(1);
 }
 
@@ -38,7 +39,7 @@ void regError(const char * msg, int line, int errNum) {
  *    - N/A
  */
 void threadError(const char * msg, int line, int errNum) {
-    fprintf(stderr,"%s L:%d\n",msg,line);
+    fprintf(stderr,"%s ERRNO: \"%s\" L:%d\n",msg, strerror(errNum), line);
 }
 
 /* __tryNum()__
@@ -124,7 +125,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
  *              <msgsize> is the number of bytes in ",<error code>,<read data>"
  */
 char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
-  printf("Read():\nNegFd: %d\nSize: %d\nData: %s\n\n", msgSize, negfd, msg);
+  printf("Read():\nNegFd: %d\nSize: %d\nData: %s\n\n",negfd, msgSize, msg);
 
   *retMsgSize = 9;
   char * ret = malloc((*retMsgSize)*sizeof(char));
@@ -160,7 +161,7 @@ char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
  *              <msgsize> is the number of bytes in ",<error code>,w"
  */
 char * localWrite(int msgSize, char * msg, int negfd, int * retMsgSize){
-  printf("Write():\nNegFd: %d\nSize: %d\nData: %s\n\n", msgSize, negfd, msg);
+  printf("Write():\nNegFd: %d\nSize: %d\nData: %s\n\n", negfd, msgSize, msg);
 
   *retMsgSize = 10;
   char * ret = malloc((*retMsgSize)*sizeof(char));
@@ -219,9 +220,9 @@ char * localClose(int negfd, int * retMsgSize){
  *  Returns:
  *    N/A
  *
- *    Message format: "size, op, <permissions>, fd, data"
+ *    Message format: "size,op,<permissions>,fd,data"
  */
-void * clientHandler(void * sock){
+void * clientHandler(void * sock) {
   char buffer[250]; //Buffer for reading input and writing output
   //Zero out buffer and read message into buffer
   bzero(buffer,250);
@@ -229,7 +230,9 @@ void * clientHandler(void * sock){
   //Create buffer to read Packet Size
   char * init_buffer = malloc(1);
   if(init_buffer == NULL) {
-    threadError("ERROR: Malloc Failure, dropping Client", __LINE__, 0);
+    threadError("ERROR: Malloc Failure, dropping Client", __LINE__, errno);
+    close(*((int*)sock));
+    free(sock);
     pthread_exit(0);
   }
 
@@ -244,7 +247,9 @@ void * clientHandler(void * sock){
     //Realloc to ensure you have enough room
     init_buffer = realloc(init_buffer, total_Size);
     if(init_buffer == NULL){
-      threadError("ERROR: Realloc Failure, dropping Client", __LINE__, 0);
+      threadError("ERROR: Realloc Failure, dropping Client", __LINE__, errno);
+      close(*((int*)sock));
+      free(sock);
       pthread_exit(0);
     }
 
@@ -254,7 +259,10 @@ void * clientHandler(void * sock){
     while(amount > 0) { //Ensure MIN_BUFF_SIZE bytes were read...
       status = read (*((int*) sock), init_buffer+offset, amount);
       if (status < 0){
-        threadError("ERROR reading from socket", __LINE__, 0);
+        threadError("ERROR reading from socket", __LINE__, errno);
+        free(init_buffer);
+        close(*((int*)sock));
+        free(sock);
         pthread_exit(0);
       }
       amount -= status;
@@ -273,7 +281,10 @@ void * clientHandler(void * sock){
   //Malloc for the rest of the message (includng the comma)
   char * msg = malloc(msgSize*sizeof(char));
   if(msg == NULL) {
-    threadError("ERROR: Malloc Failure, dropping Client", __LINE__, 0);
+    threadError("ERROR: Malloc Failure, dropping Client", __LINE__, errno);
+    free(init_buffer);
+    close(*((int*)sock));
+    free(sock);
     pthread_exit(0);
   }
 
@@ -292,7 +303,11 @@ void * clientHandler(void * sock){
     if (status >= 0) {
       amount -= status;
     } else {
-      threadError("ERROR reading from socket", __LINE__, 0);
+      threadError("ERROR reading from socket", __LINE__, errno);
+      free(init_buffer);
+      free(msg);
+      close(*((int*)sock));
+      free(sock);
       pthread_exit(0);
     }
   }
@@ -349,7 +364,10 @@ void * clientHandler(void * sock){
       break;
 
     default:
-      threadError("ERROR Not an OP",__LINE__,0);
+      threadError("ERROR Not an OP",__LINE__,errno);
+      free(msg);
+      close(*((int*)sock));
+      free(sock);
       pthread_exit(0);
   }
 
@@ -358,13 +376,19 @@ void * clientHandler(void * sock){
 
   //Message creation failure
   if(returningMsg == NULL){
+    free(returningMsg);
+    close(*((int*)sock));
+    free(sock);
     pthread_exit(0);
   }
 
   //Write the message back to the client
   status = write(*((int*) sock),returningMsg,retMsgSize);
   if (status < 0){
-       threadError("ERROR writing to socket",__LINE__,0);
+       threadError("ERROR writing to socket",__LINE__,errno);
+       free(returningMsg);
+       close(*((int*)sock));
+       free(sock);
        pthread_exit(0);
   }
 
@@ -385,15 +409,13 @@ int main(int argc, char *argv[]) {
      struct sockaddr_in serv_addr, cli_addr; //For setting up sockets
 
      //Throw an error if a port isn't given to ./server
-     if (argc != 2) {
-         fprintf(stderr,"ERROR, no port provided\n");
-         exit(1);
-     }
+     if (argc != 2)
+        regError("ERROR No port provided",__LINE__,EINVAL);
 
      //Create a socket
      baseSock = socket(AF_INET, SOCK_STREAM, 0);
      if (baseSock < 0)
-        regError("ERROR opening socket",__LINE__,0);
+        regError("ERROR opening socket",__LINE__,errno);
 
      portNum = atoi(argv[1]); //Store port number
 
@@ -406,7 +428,7 @@ int main(int argc, char *argv[]) {
 
      //Sets up socket
      if (bind(baseSock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
-          regError("ERROR on binding",__LINE__,0);
+          regError("ERROR on binding",__LINE__,errno);
      listen(baseSock,5); //Preps to accept clients (only holds 5 clients in queue)
      clilen = sizeof(cli_addr);
 
@@ -414,12 +436,12 @@ int main(int argc, char *argv[]) {
           //Wait for client
           passSock = accept(baseSock, (struct sockaddr *) &cli_addr, &clilen);
           if (passSock < 0)
-               regError("ERROR on accept",__LINE__,0);
+               regError("ERROR on accept",__LINE__,errno);
 
           //Malloc to pass socket descriptor to cliHand()
           int * pass = malloc(sizeof(int));
           if (pass == NULL)
-               regError("ERROR on malloc",__LINE__,0);
+               regError("ERROR on malloc",__LINE__,errno);
           *pass = passSock; //Put it in pass
 
           //Begin thread creation
@@ -428,13 +450,13 @@ int main(int argc, char *argv[]) {
 
           //Initialize and set Attributes to deatached state to allow exit to end thread
           if(pthread_attr_init(&cliAttr) != 0)
-            regError("ERROR on attr_init",__LINE__,0);
+            regError("ERROR on pthread_attr_init",__LINE__,errno);
           if(pthread_attr_setdetachstate(&cliAttr, PTHREAD_CREATE_DETACHED) != 0)
-            regError("ERROR on attr_setdetachstate",__LINE__,0);
+            regError("ERROR on pthread_attr_setdetachstate",__LINE__,errno);
 
           //Create thread and continute
           if(pthread_create(&cliThread, &cliAttr, cliHand, (void*) pass) != 0)
-            regError("ERROR on create",__LINE__,0);
+            regError("ERROR on pthread_create",__LINE__,errno);
      }
 
      close(baseSock);
