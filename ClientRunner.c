@@ -54,6 +54,40 @@ int getSock(char * hostname){
   return sockfd;
 }
 
+void testStuff(){
+  int status, sockfd;
+  char buffer[250]; //For what to send to server
+
+  sockfd = getSock(verifiedHost);
+  if(sockfd < 0){
+    error("ERROR verifying host");
+  }
+
+  //---- Successfully Connected ----//
+  printf("Enter Message: ");
+  bzero(buffer,250);
+  fgets(buffer, 250,stdin);
+
+  //Write this buffer to the socket
+  status = write(sockfd,buffer,250);
+  if (status < 0)
+       error("ERROR writing to socket");
+
+  //Zero out the buffer for a read
+  bzero(buffer,250);
+
+  //Read from the socket into the buffer
+  status = read(sockfd,buffer,250);
+  if (status < 0)
+       error("ERROR reading from socket");
+
+  //Close the socket using sockfd
+  close(sockfd);
+
+  //Print read information
+  printf("Ret Msg: %s\n", buffer);
+}
+
 int netserverinit(char * hostname){
   int status, sockfd;
   char buffer[5]; //For what to send to server
@@ -100,7 +134,10 @@ int netserverinit(char * hostname){
 int main(int argc, char *argv[])
 {
     if(netserverinit(argv[1]) == 0){
-      printf("Success\n%s\n", verifiedHost);
+      printf("%s Does Exist.\n", verifiedHost);
+      testStuff();
+    } else {
+      printf("Error, bad host");
     }
 
     return 0;
