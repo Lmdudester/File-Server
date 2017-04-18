@@ -269,6 +269,23 @@ void * clientHandler(void * sock) {
       offset += status;
     }
 
+    //IF ITS NETINIT
+    if(total_Size == MIN_BUFF_SIZE){
+      char c = init_buffer[4];
+      init_buffer[4] = '\0';
+      if(strcmp(init_buffer, "chk?") == 0) { //Then its netinit
+          int s;
+          s = write(*((int*) sock),"good",5);
+          if (s < 0)
+              threadError("ERROR writing to socket",__LINE__,errno);
+          free(init_buffer);
+          close(*((int*)sock));
+          free(sock);
+          pthread_exit(0);
+      }
+      init_buffer[4] = c;
+    }
+
     //See if we found the end of the number yet
     numEnd = tryNum(init_buffer, total_Size);
   }
