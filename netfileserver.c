@@ -336,7 +336,13 @@ void * clientHandler(void * sock) {
     case 'r': //Read
       ptr += 2;
       numEnd = tryNum(ptr, msgSize - 3); //read fd
-      if(numEnd == NULL);
+      if(numEnd == NULL){
+        threadError("ERROR No file desciptor", __LINE__, EBADMSG);
+        free(msg);
+        close(*((int*)sock));
+        free(sock);
+        pthread_exit(0);
+      }
       *numEnd = '\0';
       fd = atoi(ptr);
       *numEnd = ',';
@@ -346,7 +352,13 @@ void * clientHandler(void * sock) {
     case 'w': //Write
       ptr += 2;
       numEnd = tryNum(ptr, msgSize - 3); //read fd
-      if(numEnd == NULL);
+      if(numEnd == NULL){
+        threadError("ERROR No file desciptor", __LINE__, EBADMSG);
+        free(msg);
+        close(*((int*)sock));
+        free(sock);
+        pthread_exit(0);
+      }
       *numEnd = '\0';
       fd = atoi(ptr);
       *numEnd = ',';
@@ -356,7 +368,13 @@ void * clientHandler(void * sock) {
     case 'c': //Close
       ptr += 2;
       numEnd = tryNum(ptr, msgSize - 3); //read fd
-      if(numEnd == NULL);
+      if(numEnd == NULL){
+        threadError("ERROR No file desciptor", __LINE__, EBADMSG);
+        free(msg);
+        close(*((int*)sock));
+        free(sock);
+        pthread_exit(0);
+      }
       *numEnd = '\0';
       fd = atoi(ptr);
       *numEnd = ',';
