@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <ctype.h>
+#include <fcntl.h>
 #include <errno.h>
 
 #define MIN_BUFF_SIZE 5
