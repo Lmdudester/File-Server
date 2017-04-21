@@ -303,7 +303,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
 
         //declare all of the parts of the return message
         int retErrorCode;
-        char* retNegFd;
+        size_t len;
 
         int fd = open(msg, O_RDWR);
 
@@ -312,6 +312,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
 
                 //let's set the returnMsgSize to 0 in case this isnt the first return
                 (*retMsgSize) = 0;
+                len = 0;
 
                 //first, we know that a return message will always have two commas in it. Let's add 2 to the return counter
                 (*retMsgSize) += (sizeof(char) * 2); //now we don't have to worry about the commas being counted anymore
@@ -322,9 +323,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
 
                 //now lets work on the fd to re returned. Since this is an error case, we want a fd that will clearly indicate and error.
                 //since it's supposed to be negative, if we set it as a postive fd, it will be pretty clear that there was an error.
-                retNegFd = malloc(sizeof(char) * 2); //malloc one byte for a fd of '1', and a byte for the null byte
-                retNegFd[0] = '1'; //set the first byte as the positive fd 1
-                retNegFd[1] = '\0'; //set the last byte as the null byte
+                char retNegFd = '1';
                 //we added another character to the return message, so lets increment the counter
                 (*retMsgSize) += (sizeof(char));
 
@@ -333,24 +332,24 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
                 //the first thing in the message is the retMsgSize, so let's add that
                 //however, retMsgSize is an int right now and we need it as a char*, so let's cast it
                 sprintf(retMsg, "%i", (*retMsgSize));
+                size_t len = intLength((*retMsgSize));
                 //now retMsg starts with the length of the following string
                 //time to add a ',' to seperate this
                 strcat(retMsg, ",");
+                len++;
                 //now we have to add the error code
                 //so things get a little hairy here so hold on. We need to cast the error code from an int to a char*
                 //however, we can't do it like we did a few lines before as snprintf overwrite the buffer. We need to make a new string to temperarily hold it
-                char* tempErrorCode = malloc(sizeof(int) * intLength(retErrorCode) + sizeof(char)); //don't forget to add room for a null byte
-                sprintf(tempErrorCode, "%i", retErrorCode);
-                //now we can concat that
-                strcat(retMsg, tempErrorCode);
+                char ec[intLength(retErrorCode)];
+                sprintf(ec, "%i", retErrorCode);
+                memcpy(retMsg + len, ec, intLength(retErrorCode));
+                len += intLength(retErrorCode);
                 //now we have to add a comma
                 strcat(retMsg, ",");
-                //finally, we have to append the fd, which is thankfully already a char*
-                strcat(retMsg, retNegFd);
+                len++;
+                //finally, we have to append the fd, which is thankfully already a char
+                memcpy(retMsg + len, &retNegFd, 1);
 
-                //time to be a responsible programmer and clean up what we malloced
-                free(retNegFd);
-                free(tempErrorCode);
                 return retMsg;
         } else {
                 //okay, now it worked so the first thing we should do is to update the linked list
@@ -358,6 +357,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
 
                 //let's set the returnMsgSize to 0 in case this isnt the first return
                 (*retMsgSize) = 0;
+                len = 0;
 
                 //now we have to make the return message.
                 //first, we know that a return message will always have two commas in it. Let's add 2 to the return counter
@@ -365,12 +365,8 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
                 // printf("msgSize is %i\n", (*retMsgSize));
 
                 //lets set the return error, which will be 0 to indicate a success
-                retErrorCode = 0;
                 (*retMsgSize) += (sizeof(char)); //increment the retMsgSize counter
 
-                //now lets work on the fd to be returned. convert the fd to a string
-                retNegFd = malloc((sizeof(char) * intLength(fd)) + sizeof(char));                  //make room for the fd and a null byte
-                sprintf(retNegFd, "-%i", fd);
                 //we added more characters to the return message, so lets increment the counter. Remember to include room for the negative sign.
                 (*retMsgSize) += (sizeof(char) * (intLength(fd) + 2));
                 // printf("msgSize is %i\n", (*retMsgSize));
@@ -380,24 +376,19 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
                 //the first thing in the message is the retMsgSize, so let's add that
                 //however, retMsgSize is an int right now and we need it as a char*, so let's cast it
                 sprintf(retMsg, "%i", (*retMsgSize));
+                len += intLength(*retMsgSize);
                 //now retMsg starts with the length of the following string
                 //time to add a ',' to seperate this
-                strcat(retMsg, ",");
                 //now we have to add the error code
                 //so things get a little hairy here so hold on. We need to cast the error code from an int to a char*
                 //however, we can't do it like we did a few lines before as snprintf overwrite the buffer. We need to make a new string to temperarily hold it
-                char* tempErrorCode = malloc(sizeof(int) * intLength(retErrorCode) + sizeof(char)); //don't forget to add room for a null byte
-                sprintf(tempErrorCode, "%i", retErrorCode);
-                //now we can concat that
-                strcat(retMsg, tempErrorCode);
-                //now we have to add a comma
-                strcat(retMsg, ",");
+                strcat(retMsg, ",0,-");
+                len += 4;
                 //finally, we have to append the fd, which is thankfully already a char*
-                strcat(retMsg, retNegFd);
+                char tempFd[intLength(fd) + 1];
+                sprintf(tempFd, "%i", fd);
 
-                //time to be a responsible programmer and clean up what we malloced
-                free(retNegFd);
-                free(tempErrorCode);
+                memcpy(retMsg+len, tempFd, intLength(fd));
                 return retMsg;
         }
 }
@@ -417,26 +408,6 @@ int myatoi(int msgSize, char * msg){
 
         return ret; //return the atoi version of the number.
 }
-/*
- * Function: getNumChar
- * --------------------
- * Given a filename, it will open and count the number of characters in the file
- *
- *  filename: the name of the file being checked
- *
- *  returns: the number of characters in the file
- */
-int getNumChar(int fd){
-        FILE* fp = fdopen(fd, "r");
-        int count = 0;
-        while (feof(fp) == 0) {
-                fgetc(fp);
-                count++;
-        }
-        fclose(fp);
-        return count;
-}
-
 
 /* __localRead()__
  *  - Given a file desciptor and size n, will read n bytes from the corresponding
@@ -475,13 +446,13 @@ char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
                 char * retMsg = malloc(sizeof(char) * (intLength((*retMsgSize)) + (*retMsgSize)));
                 sprintf(retMsg, "%i", (*retMsgSize));
                 strcat(retMsg, ",");
-                char* temp = malloc(intLength(errorcode));
+                char temp[intLength(errorcode)];
                 sprintf(temp, "%i", errorcode);
-                strcat(retMsg, temp);
+                memcpy(retMsg+(intLength(errorcode) + 1), temp, intLength(errorcode));
                 strcat(retMsg, ",0");
-                free(temp);
                 return retMsg;
         } else {
+                printf("status is: %i\n", status);
                 char* retMsg = malloc(sizeof(char) * status); //shrinks the allocated space to the number of read bytes
                 (*retMsgSize) += status;
                 sprintf(retMsg, "%i", (*retMsgSize));
@@ -527,11 +498,10 @@ char * localWrite(int msgSize, char * msg, int negfd, int * retMsgSize){
                 char * retMsg = malloc(sizeof(char) * (intLength((*retMsgSize)) + (*retMsgSize)));
                 sprintf(retMsg, "%i", (*retMsgSize));
                 strcat(retMsg, ",");
-                char* temp = malloc(intLength(errorcode));
+                char temp[intLength(errorcode)];
                 sprintf(temp, "%i", errorcode);
-                strcat(retMsg, temp);
+                memcpy(retMsg+(intLength(errorcode) + 1), temp, intLength(errorcode));
                 strcat(retMsg, ",w");
-                free(temp);
                 return retMsg;
         } else {
                 //now we are working with the case where the write was successful, in which case the message will always be the same
@@ -567,12 +537,14 @@ char * localWrite(int msgSize, char * msg, int negfd, int * retMsgSize){
 char * localClose(int negfd, int * retMsgSize){
         //since the stored fd are postive, let's flip the given fd
         int fd = -1 * negfd;
+        size_t len;
 
         close(fd);
 
         int found = findNode(fd);
         //let's first see if the file exists
         if (found != 1) { //the node wasn't found
+        len = 0;
                 //let's set the returnMsgSize to 0 in case this isnt the first return
                 (*retMsgSize) = 0;
 
@@ -588,59 +560,36 @@ char * localClose(int negfd, int * retMsgSize){
                 //the first thing in the message is the retMsgSize, so let's add that
                 //however, retMsgSize is an int right now and we need it as a char*, so let's cast it
                 sprintf(retMsg, "%i", (*retMsgSize));
+                len += intLength((*retMsgSize));
                 //now retMsg starts with the length of the following string
                 //time to add a ',' to seperate this
                 strcat(retMsg, ",");
+                len++;
                 //now we have to add the error code
                 //so things get a little hairy here so hold on. We need to cast the error code from an int to a char*
                 //however, we can't do it like we did a few lines before as snprintf overwrite the buffer. We need to make a new string to temperarily hold it
-                char* tempErrorCode = malloc(sizeof(int) * intLength(retErrorCode) + sizeof(char)); //don't forget to add room for a null byte
-                sprintf(tempErrorCode, "%i", retErrorCode);
-                //now we can concat that
-                strcat(retMsg, tempErrorCode);
+                char ec[intLength(retErrorCode)];
+                sprintf(ec, "%i", retErrorCode);
+                memcpy(retMsg + len, ec, intLength(retErrorCode));
+                len += intLength(retErrorCode);
                 //now we have to add a comma
                 strcat(retMsg, ",c");
 
                 //time to be a responsible programmer and clean up what we malloced
                 // free(retNegFd);
-                free(tempErrorCode);
                 return retMsg;
         } else {
+          len = 0;
                 //okay, now it worked so the first thing we should do is to update the linked list
                 removeNode(fd); //removes node
 
                 //let's set the returnMsgSize to 0 in case this isnt the first return
-                (*retMsgSize) = 0;
+                (*retMsgSize) = 4;
 
-                //now we have to make the return message.
-                //first, we know that a return message will always have two commas in it and a c. Let's add 2 to the return counter
-                (*retMsgSize) += (sizeof(char) * 3); //now we don't have to worry about the commas being counted anymore
-
-                //lets set the return error, which will be 0 to indicate a success
-                int retErrorCode = 0;
-                (*retMsgSize) += (sizeof(char)); //increment the retMsgSize counter
-
-                //now we have the two components of the return message, let's create the final return message
-                char* retMsg = malloc((sizeof(char) * (*retMsgSize)) + (sizeof(char) * intLength((*retMsgSize)))); //the return message is retMsgSize long, plus the length of retMsgSize
+                char* retMsg = malloc(5); //the return message is retMsgSize long, plus the length of retMsgSize
                 //the first thing in the message is the retMsgSize, so let's add that
                 //however, retMsgSize is an int right now and we need it as a char*, so let's cast it
-                sprintf(retMsg, "%i", (*retMsgSize));
-                //now retMsg starts with the length of the following string
-                //time to add a ',' to seperate this
-                strcat(retMsg, ",");
-                //now we have to add the error code
-                //so things get a little hairy here so hold on. We need to cast the error code from an int to a char*
-                //however, we can't do it like we did a few lines before as snprintf overwrite the buffer. We need to make a new string to temperarily hold it
-                char* tempErrorCode = malloc(sizeof(int) * intLength(retErrorCode) + sizeof(char)); //don't forget to add room for a null byte
-                sprintf(tempErrorCode, "%i", retErrorCode);
-                //now we can concat that
-                strcat(retMsg, tempErrorCode);
-                //now we have to add a comma
-                strcat(retMsg, ",c");
-
-                //time to be a responsible programmer and clean up what we malloced
-                // free(retNegFd);
-                free(tempErrorCode);
+                strcat(retMsg, "4,0,c");
                 return retMsg;
         }
 }
