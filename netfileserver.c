@@ -362,6 +362,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
                 //now we have to make the return message.
                 //first, we know that a return message will always have two commas in it. Let's add 2 to the return counter
                 (*retMsgSize) += (sizeof(char) * 2); //now we don't have to worry about the commas being counted anymore
+                // printf("msgSize is %i\n", (*retMsgSize));
 
                 //lets set the return error, which will be 0 to indicate a success
                 retErrorCode = 0;
@@ -371,7 +372,8 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
                 retNegFd = malloc((sizeof(char) * intLength(fd)) + sizeof(char));                  //make room for the fd and a null byte
                 sprintf(retNegFd, "-%i", fd);
                 //we added more characters to the return message, so lets increment the counter. Remember to include room for the negative sign.
-                (*retMsgSize) += (sizeof(char) * (intLength(fd) + 1));
+                (*retMsgSize) += (sizeof(char) * (intLength(fd) + 2));
+                // printf("msgSize is %i\n", (*retMsgSize));
 
                 //now we have the two components of the return message, let's create the final return message
                 char* retMsg = malloc((sizeof(char) * (*retMsgSize)) + (sizeof(char) * intLength((*retMsgSize)))); //the return message is retMsgSize long, plus the length of retMsgSize
@@ -415,6 +417,27 @@ int myatoi(int msgSize, char * msg){
 
         return ret; //return the atoi version of the number.
 }
+/*
+ * Function: getNumChar
+ * --------------------
+ * Given a filename, it will open and count the number of characters in the file
+ *
+ *  filename: the name of the file being checked
+ *
+ *  returns: the number of characters in the file
+ */
+int getNumChar(int fd){
+        FILE* fp = fdopen(fd, "r");
+        int count = 0;
+        while (feof(fp) == 0) {
+                fgetc(fp);
+                count++;
+        }
+        fclose(fp);
+        return count;
+}
+
+
 /* __localRead()__
  *  - Given a file desciptor and size n, will read n bytes from the corresponding
  *      file and return those bytes in a dynamically allocated string
@@ -436,11 +459,12 @@ int myatoi(int msgSize, char * msg){
  *      *Note: retMsgSize is the number of bytes malloced for returned msg
  *              <msgsize> is the number of bytes in ",<error code>,<read data>"
  */
+//TODO Functionality needs to be added to detect when you are asking to read more than the file has. This currently segfaults
 char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
         //let's gather what we need
         int fd = -1 * negfd;
         char* buffer = malloc(msgSize); //make a buffer to hold the string that is read
-        int status = read(fd, buffer, (size_t)msgSize);
+        int status = read(fd, buffer, (size_t)atoi(msg));
 
         (*retMsgSize) += 2; //takes care of the commas
 
@@ -460,8 +484,8 @@ char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
         } else {
                 char* retMsg = malloc(sizeof(char) * status); //shrinks the allocated space to the number of read bytes
                 (*retMsgSize) += status;
-                (*retMsgSize) += strlen(buffer);
                 sprintf(retMsg, "%i", (*retMsgSize));
+                (*retMsgSize) += 3;
                 strcat(retMsg, ",0,");
                 strcat(retMsg, buffer);
                 free(buffer);
@@ -495,7 +519,7 @@ char * localWrite(int msgSize, char * msg, int negfd, int * retMsgSize){
         //staging - getting all of the parts of what we need
         //write needs the fd, so lets flip it
         int fd = -1 * negfd;
-        int status = write(fd, &msg, (size_t)strlen(msg)); //actually preform the write
+        int status = write(fd, msg, (size_t)strlen(msg)); //actually preform the write
         (*retMsgSize) += 3; //account for the 2 commas and a 'w'
         if (status == -1) {
                 int errorcode = errno;
