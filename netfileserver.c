@@ -19,8 +19,9 @@ typedef struct node {
 node_t* front = NULL;
 pthread_mutex_t mutexLL = PTHREAD_MUTEX_INITIALIZER;
 
-/*
- * Function: intComp
+/*_____HELPER FUNCTIONS FOR LOCAL FUNCTIONS_____*/
+
+/* Function: intComp
  * --------------------
  * Given two ints consiting of alphanumeric characters, intComp compares them
  * and returns
@@ -41,6 +42,64 @@ int intComp(int int1, int int2){
                 return 0;
         }
 }
+
+//returns the length of an int
+int intLength (int num){
+        int count = 0;
+        if(num < 0){
+          count++;
+          num *= -1;
+        }
+        if(num == 0)
+          return 1;
+        while (num != 0) {
+                num /= 10;
+                count++;
+        }
+        return count;
+}
+
+int myatoi(int msgSize, char * msg){
+        int ret = 0;
+
+        int i, temp;
+        int powerOf10 = 1;
+
+        for (i = msgSize-1; i >= 0; i--) {
+                temp = msg[i] - '0';
+                //printf("%c - temp is %i\n", msg[i], temp);
+                ret += temp * powerOf10;
+                powerOf10 *= 10;
+        }
+
+        return ret; //return the atoi version of the number.
+}
+
+/* __tryNum()__
+ *  - Attempts to located a ',' at the end of an ascii number. Will only read
+ *      up to max_size. Returns a pointer to the ',' at the end
+ *
+ *  Arguments:
+ *    ascii - the pointer to the beginning of the ascii number
+ *    max_size - the maximum chars to be read
+ *
+ *  Returns:
+ *    - a pointer to the ',' at the end if one exists
+ *    - NULL otherwise
+ */
+char * tryNum(char * ascii, int max_size) {
+        while(*ascii != ',') {
+                if(max_size == 0)
+                        return NULL;
+                ascii++;
+                max_size--;
+        }
+
+        return ascii;
+}
+
+
+/*_____NODE FUNCTIONS_____*/
 
 /*
  * Function: createNode
@@ -215,6 +274,8 @@ void printLL(){
         pthread_mutex_unlock(&mutexLL);
 }
 
+/*_____ERROR FUNCTIONS_____*/
+
 /* __regError()__
  *  - Reports an error and exits, terminates whole program
  *
@@ -246,45 +307,7 @@ void threadError(const char * msg, int line, int errNum) {
         fprintf(stderr,"%s ERRNO: \"%s\" L:%d\n",msg, strerror(errNum), line);
 }
 
-/* __tryNum()__
- *  - Attempts to located a ',' at the end of an ascii number. Will only read
- *      up to max_size. Returns a pointer to the ',' at the end
- *
- *  Arguments:
- *    ascii - the pointer to the beginning of the ascii number
- *    max_size - the maximum chars to be read
- *
- *  Returns:
- *    - a pointer to the ',' at the end if one exists
- *    - NULL otherwise
- */
-char * tryNum(char * ascii, int max_size) {
-        while(*ascii != ',') {
-                if(max_size == 0)
-                        return NULL;
-                ascii++;
-                max_size--;
-        }
-
-        return ascii;
-}
-
 /*_____FILE METHODS_____*/
-//returns the length of an int
-int intLength (int num){
-        int count = 0;
-        if(num < 0){
-          count++;
-          num *= -1;
-        }
-        if(num == 0)
-          return 1;
-        while (num != 0) {
-                num /= 10;
-                count++;
-        }
-        return count;
-}
 
 /* __localOpen()__
  *  - Given a file path, will open the file and return the file desciptor.
@@ -300,7 +323,7 @@ int intLength (int num){
  *    - A pointer to a dynamically allocated string containing an error code
  *        and an ascii representation of the negated file descriptor
  *
- *    Input Message Format: "<File path>"
+ *    Input Message Format: "<permissions>,<File path>"
  *    Return Message Format: "<msgsize>,<error code>,<negfd>"
  *
  *      *Note: retMsgSize is the number of bytes malloced for returned msg
@@ -310,11 +333,31 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
         //declare all of the parts of the return message
         int retErrorCode;
         size_t len;
-        int newMsgSize;
+        int newMsgSize, fd;
+
+        //Read RDWR Permissions for client
+        char perm = *msg;
+        msg += 2;
+        msgSize -= 2;
 
         (*retMsgSize) = 0;
 
-        int fd = open(msg, O_RDWR);
+        switch(perm) {
+          case 'r': //read-only
+            fd = open(msg, O_RDONLY);
+            break;
+
+          case 'w': //write-only
+            fd = open(msg, O_WRONLY);
+            break;
+
+          case 'b': //both
+            fd = open(msg, O_RDWR);
+            break;
+
+          default: //data was corrupted
+            fd = -1;
+        }
 
         //TODO wrap the malloc statements in an if to catch any errors
         if(fd < 0) { //open has encountered an error
@@ -324,7 +367,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
                 len = 0;
 
                 //first, we know that a return message will always have three commas in it. Let's add 3 to the return counter
-                newMsgSize += (sizeof(char) * 3); //now we don't have to worry about the commas being counted anymore
+                newMsgSize += (sizeof(char) * 4); //now we don't have to worry about the commas being counted anymore
 
                 //lets get the return error
                 retErrorCode = errno; //set the error code to the errno value
@@ -365,6 +408,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
                 len++;
 
                 retMsg[len] = ',';
+                retMsg[len+1] = 'o';
 
                 return retMsg;
         } else {
@@ -377,7 +421,7 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
 
                 //now we have to make the return message.
                 //first, we know that a return message will always have three commas in it. Let's add 3 to the return counter
-                newMsgSize += (sizeof(char) * 3); //now we don't have to worry about the commas being counted anymore
+                newMsgSize += (sizeof(char) * 4); //now we don't have to worry about the commas being counted anymore
                 // printf("msgSize is %i\n", newMsgSize);
 
                 //lets set the return error, which will be 0 to indicate a success
@@ -413,25 +457,10 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
                 len += intLength(fd*-1);
 
                 retMsg[len] = ',';
+                retMsg[len+1] = 'o';
 
                 return retMsg;
         }
-}
-
-int myatoi(int msgSize, char * msg){
-        int ret = 0;
-
-        int i, temp;
-        int powerOf10 = 1;
-
-        for (i = msgSize-1; i >= 0; i--) {
-                temp = msg[i] - '0';
-                //printf("%c - temp is %i\n", msg[i], temp);
-                ret += temp * powerOf10;
-                powerOf10 *= 10;
-        }
-
-        return ret; //return the atoi version of the number.
 }
 
 /* __localRead()__
@@ -712,7 +741,7 @@ char * localClose(int negfd, int * retMsgSize){
  *  Returns:
  *    N/A
  *
- *    Message format: "size,op,<permissions>,fd,data"
+ *    Message format: "size,op,fd,<permissions>,data"
  */
 void * clientHandler(void * sock) {
         char buffer[250]; //Buffer for reading input and writing output
@@ -759,23 +788,6 @@ void * clientHandler(void * sock) {
                         }
                         amount -= status;
                         offset += status;
-                }
-
-                //IF ITS NETINIT
-                if(total_Size == MIN_BUFF_SIZE) {
-                        char c = init_buffer[4];
-                        init_buffer[4] = '\0';
-                        if(strcmp(init_buffer, "chk?") == 0) { //Then its netinit
-                                int s;
-                                s = write(*((int*) sock),"good",5);
-                                if (s < 0)
-                                        threadError("ERROR writing to socket",__LINE__,errno);
-                                free(init_buffer);
-                                close(*((int*)sock));
-                                free(sock);
-                                pthread_exit(0);
-                        }
-                        init_buffer[4] = c;
                 }
 
                 //See if we found the end of the number yet
@@ -920,6 +932,8 @@ void * clientHandler(void * sock) {
         free(sock);
         pthread_exit(0);
 }
+
+/*_____MAIN_____*/
 
 int main(int argc, char *argv[]) {
         int baseSock, passSock, portNum; //Info required for server
