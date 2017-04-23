@@ -59,6 +59,7 @@ int intLength (int num){
         return count;
 }
 
+
 int myatoi(int msgSize, char * msg){
         int ret = 0;
 
@@ -66,6 +67,10 @@ int myatoi(int msgSize, char * msg){
         int powerOf10 = 1;
 
         for (i = msgSize-1; i >= 0; i--) {
+                if(msg[i] == '-'){
+                    ret *= -1;
+                      break;
+                }
                 temp = msg[i] - '0';
                 //printf("%c - temp is %i\n", msg[i], temp);
                 ret += temp * powerOf10;

@@ -41,6 +41,27 @@ char * tryNum(char * ascii, int max_size) {
         return ascii;
 }
 
+size_t myatosizet(int msgSize, char * msg){
+        size_t ret = 0;
+
+        int i;
+        int temp;
+        int powerOf10 = 1;
+
+        for (i = msgSize-1; i >= 0; i--) {
+                if(msg[i] == '-'){
+                  ret *= -1;
+                  break;
+                }
+                temp = msg[i] - '0';
+                //printf("%c - temp is %i\n", msg[i], temp);
+                ret += temp * powerOf10;
+                powerOf10 *= 10;
+        }
+
+        return ret; //return the atoi version of the number.
+}
+
 //returns the length of an int
 int intLength (int num){
         int count = 0;
@@ -58,9 +79,27 @@ int intLength (int num){
 }
 
 //DONE
+int size_tLength(size_t num){
+  int count = 0;
+  if(num < 0){
+    count++;
+    num *= -1;
+  }
+  if(num == 0)
+    return 1;
+  while (num != 0) {
+          num /= 10;
+          count++;
+  }
+  return count;
+}
+
+//DONE
 int getSock(){
-  if(verifiedServer == NULL)
+  if(verifiedServer == NULL){
+    errno = EPERM;
     return -1;
+  }
 
   int sockfd, portno; //Info required for client
   struct sockaddr_in serv_addr; //Info for setting up socket
@@ -91,6 +130,7 @@ int getSock(){
   return sockfd;
 }
 
+//DONE
 char * readFromServer(int sockfd, int * retSize){
   //Create buffer to read Packet Size
   char * init_buffer = malloc(1);
@@ -225,14 +265,14 @@ int netserverinit(char * hostname){
 //DONE
 int netopen(const char *pathname, int flags){
   //No path name
-  if(pathname == NULL && strlen(pathname) > 0){
-    errno = ENOENT;
+  if(pathname == NULL || strlen(pathname) <= 0){
+    errno = EINVAL;
     return -1;
   }
 
   //Improper flags
   if(flags < 0 || flags > 2){
-    errno = EPERM;
+    errno = EINVAL;
     return -1;
   }
 
@@ -273,9 +313,11 @@ int netopen(const char *pathname, int flags){
 
   //Open a socket
   int sockfd = getSock();
-  int status;
+  if(sockfd == -1)
+    return -1;
 
   //Write to the server
+  int status;
   status = write(sockfd,sendMsg,sendSize);
   if (status < 0){
     errno = TRY_AGAIN;
@@ -290,6 +332,9 @@ int netopen(const char *pathname, int flags){
   char * msg = readFromServer(sockfd, &msgSize); //Get malloced message
   if(msg == NULL) //Errno set by readFromServer
     return -1;
+
+  //Done with server interaction, so cose the socket
+  close(sockfd);
 
   //printf("Message: %s, Size: %d\n", msg, msgSize);
 
@@ -316,20 +361,135 @@ int netopen(const char *pathname, int flags){
   int ret = atoi(ptr);
   *end = ',';
 
+  if(ret == 1){
+    ret = -1;
+  }
+
   return ret;
 }
 
+//DONE
+ssize_t netread(int fildes, void * buf, size_t nbyte){
+  //If attempting a read less than 0 bytes
+  if(nbyte < 0){
+    errno = EINVAL;
+    return -1;
+  }
+
+  //Set up the size variable
+  int sendSize = intLength(fildes) + size_tLength(nbyte) + 4;
+  int len = 0;
+
+  //Malloc the correct size for the message
+  char * sendMsg = malloc(sizeof(char)*(sendSize + intLength(sendSize)));
+  if(sendMsg == NULL) //Errno set by malloc
+    return -1;
+
+  //Print in the size
+  sprintf(sendMsg, "%i", sendSize);
+  len += intLength(sendSize);
+
+  //Print read command
+  sendMsg[len] = ',';
+  sendMsg[len+1] = 'r';
+  sendMsg[len+2] = ',';
+  len += 3;
+
+  //Convert fd
+  char buff1[intLength(fildes)];
+  sprintf(buff1, "%i", fildes);
+  memcpy(sendMsg+len, buff1, intLength(fildes));
+  sendMsg[len+intLength(fildes)] = ',';
+  len += intLength(fildes) + 1;
+
+  //convert size_t nbyte
+  char buff2[size_tLength(nbyte)];
+  sprintf(buff2, "%zu", nbyte);
+  memcpy(sendMsg+len, buff2, size_tLength(nbyte));
+
+  //Correct size to invlude ascii size
+  sendSize += intLength(sendSize);
+
+  //Open a socket
+  int sockfd = getSock();
+  if(sockfd == -1)
+    return -1;
+
+  //Write to the server
+  int status;
+  status = write(sockfd,sendMsg,sendSize);
+  if (status < 0){
+    errno = TRY_AGAIN;
+    return -1;
+  }
+
+  //We're done with sendMsg so free it
+  free(sendMsg);
+
+  //Read from the server
+  int msgSize;
+  char * msg = readFromServer(sockfd, &msgSize); //Get malloced message
+  if(msg == NULL) //Errno set by readFromServer
+    return -1;
+
+  //Done with server interaction, so cose the socket
+  close(sockfd);
+
+  //Get return Value
+  char * ptr = msg + 1;
+  char * end = tryNum(ptr,msgSize - 1);
+  if(end == NULL){
+    errno = TRY_AGAIN;
+    return -1;
+  }
+
+  size_t retVal = myatosizet((end - ptr), ptr);
+
+  //Set errno code
+  msgSize -= (end - ptr) + 2;
+  ptr = end + 1;
+  end = tryNum(ptr,msgSize);
+  if(end == NULL){
+    errno = TRY_AGAIN;
+    return -1;
+  }
+  *end = '\0';
+  errno = atoi(ptr);
+  *end = ',';
+
+  msgSize -= (end - ptr) + 1;
+  ptr += (end - ptr) + 1;
+
+  //Copy string to buffer
+  memcpy(buf, ptr, retVal);
+
+  //Free msg now that were done
+  free(msg);
+
+  return retVal;
+}
+
+
 int main(int argc, char *argv[]) {
+    if(argc < 3){
+      printf("Too few args\n");
+      exit(0);
+    }
+
     if(netserverinit(argv[1]) == 0){
       printf("Host Does Exist.\n");
       testStuff();
     } else {
       printf("Error, bad host");
     }
-
     /*
-    //Test netopen
-    printf("fd: %d\n", netopen("./tests/test1.txt",O_RDWR));
-    */
+    if(argc == 3){
+      //Test netopen
+      int fd = netopen(argv[2],O_RDWR);
+
+      printf("Returned Open: %d ", fd);
+      printf("Errno: %s - %d\n\n", strerror(errno), errno);
+    }*/
+
     return 0;
 }
