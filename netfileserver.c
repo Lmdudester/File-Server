@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#define PORTNUM 10897
 #define MIN_BUFF_SIZE 5
 
 /*_____STRUCTS_____*/
@@ -987,10 +988,6 @@ int main(int argc, char *argv[]) {
 
         struct sockaddr_in serv_addr, cli_addr; //For setting up sockets
 
-        //Throw an error if a port isn't given to ./server
-        if (argc != 2)
-                regError("ERROR No port provided",__LINE__,EINVAL);
-
         //Create a socket
         baseSock = socket(AF_INET, SOCK_STREAM, 0);
         if (baseSock < 0)
@@ -1000,7 +997,7 @@ int main(int argc, char *argv[]) {
         if (setsockopt(baseSock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int)) < 0)
             regError("ERROR setsockopt Failure",__LINE__,errno);
 
-        portNum = atoi(argv[1]); //Store port number
+        portNum = PORTNUM; //Store port number
 
         //Build sockaddr_in struct (3 steps)
         bzero((char *) &serv_addr, sizeof(serv_addr)); //1)Zero out space
