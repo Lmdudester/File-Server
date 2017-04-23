@@ -674,17 +674,22 @@ char * localClose(int negfd, int * retMsgSize){
         int newMsgSize = 0;
         size_t len;
 
-        int closed = close(fd);
-
+        int closed;
         int found = findNode(fd);
+
+        if(found != 1){ //Didn't find it
+          errno = EBADF;
+          closed = -1;
+        } else {
+          closed = close(fd);
+        }
+
         //let's first see if the file exists
-        if (found != 1 || closed == -1) { //An error occured
+        if (closed == -1) { //An error occured
                 len = 0;
-                //let's set the returnMsgSize to 0 in case this isnt the first return
-                newMsgSize = 0;
 
                 //first, we know that a return message will always have two commas in it and a c. Let's add 2 to the return counter
-                newMsgSize += 3; //now we don't have to worry about the commas being counted anymore
+                newMsgSize = 3; //now we don't have to worry about the commas being counted anymore
 
                 //lets get the return error
                 int retErrorCode = errno; //set the error code to the errno value
@@ -919,7 +924,7 @@ void * clientHandler(void * sock) {
         free(msg);
 
         //Message creation failure
-        if(returningMsg == NULL) {
+        if(returningMsg == NULL || retMsgSize <= 4) {
                 close(*((int*)sock));
                 free(sock);
                 pthread_exit(0);

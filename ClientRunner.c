@@ -371,7 +371,7 @@ int netopen(const char *pathname, int flags){
 //DONE
 ssize_t netread(int fildes, void * buf, size_t nbyte){
   //If attempting a read less than 0 bytes
-  if(nbyte =< 0){
+  if(nbyte <= 0){
     errno = EINVAL;
     return -1;
   }
@@ -472,7 +472,7 @@ ssize_t netread(int fildes, void * buf, size_t nbyte){
 //DONE
 ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
   //If attempting a write less than 0 bytes
-  if(nbyte =< 0){
+  if(nbyte <= 0){
     errno = EINVAL;
     return -1;
   }
@@ -490,7 +490,7 @@ ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
   sprintf(sendMsg, "%i", sendSize);
   len += intLength(sendSize);
 
-  //Print read command
+  //Print write command
   sendMsg[len] = ',';
   sendMsg[len+1] = 'w';
   sendMsg[len+2] = ',';
@@ -505,8 +505,6 @@ ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
 
   //Copy bytes to be written
   memcpy(sendMsg+len,buf,nbyte);
-
-  //printf("Message: %s Length: %d\n", sendMsg, sendSize);
 
   //Correct size to invlude ascii size
   sendSize += intLength(sendSize);
@@ -535,8 +533,6 @@ ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
 
   //Done with server interaction, so close the socket
   close(sockfd);
-
-  //printf("Ret Msg: %s Ret Size: %d",msg,msgSize);
 
   //Get return Value
   char * ptr = msg + 1;
@@ -569,6 +565,86 @@ ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
   return retVal;
 }
 
+//DONE
+int netclose(int fd){ //<msg size>,<op>,<fd>,c
+  if(fd >= 0){
+    errno = EINVAL;
+    return -1;
+  }
+
+  //Set up the size variable
+  int sendSize = intLength(fd) + 5;
+  int len = 0;
+
+  //Malloc the correct size for the message
+  char * sendMsg = malloc(sizeof(char)*(sendSize + intLength(sendSize)));
+  if(sendMsg == NULL) //Errno set by malloc
+    return -1;
+
+  //Print in the size
+  sprintf(sendMsg, "%i", sendSize);
+  len += intLength(sendSize);
+
+  //Print close command
+  sendMsg[len] = ',';
+  sendMsg[len+1] = 'c';
+  sendMsg[len+2] = ',';
+  len += 3;
+
+  //Print in fd
+  char buff1[intLength(fd)];
+  sprintf(buff1, "%i", fd);
+  memcpy(sendMsg+len, buff1, intLength(fd));
+  sendMsg[len+intLength(fd)] = ',';
+  sendMsg[len+intLength(fd)+1] = 'c';
+
+  //Correct size to invlude ascii size
+  sendSize += intLength(sendSize);
+
+  //Open a socket
+  int sockfd = getSock();
+  if(sockfd == -1)
+    return -1;
+
+  //Write to the server
+  int status;
+  status = write(sockfd,sendMsg,sendSize);
+  if (status < 0){
+    errno = TRY_AGAIN;
+    return -1;
+  }
+
+  //We're done with sendMsg so free it
+  free(sendMsg);
+
+  //Read from the server
+  int msgSize;
+  char * msg = readFromServer(sockfd, &msgSize); //Get malloced message
+  if(msg == NULL) //Errno set by readFromServer
+    return -1;
+
+  //Done with server interaction, so close the socket
+  close(sockfd);
+
+  //Get return Value
+  char * ptr = msg + 1;
+  char * end = tryNum(ptr,msgSize - 1);
+  if(end == NULL){
+    errno = TRY_AGAIN;
+    return -1;
+  }
+  *end = '\0';
+  errno = atoi(ptr);
+  *end = ',';
+
+  free(msg);
+
+  if(errno != 0)
+    return -1;
+
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
     if(argc < 3){
       printf("Too few args\n");
@@ -577,18 +653,17 @@ int main(int argc, char *argv[]) {
 
     if(netserverinit(argv[1]) == 0){
       printf("Host Does Exist.\n");
-      //testStuff();
     } else {
       printf("Error, bad host");
     }
 
-    //if(argc == 3){
-      //Test netopen
-      int fd = netopen(argv[2],O_RDWR);
+    int fd = netopen(argv[2],O_RDWR);
 
-      printf("Returned Open: %d ", fd);
-      printf("Errno: %s - %d\n\n", strerror(errno), errno);
-    //}
+    printf("Returned Open: %d ", fd);
+    printf("Errno: %s - %d\n\n", strerror(errno), errno);
+
+    printf("Returned Close: %d ", netclose(fd));
+    printf("Errno: %s - %d\n\n", strerror(errno), errno);
 
     return 0;
 }
