@@ -962,6 +962,10 @@ int main(int argc, char *argv[]) {
         if (baseSock < 0)
                 regError("ERROR opening socket",__LINE__,errno);
 
+        int one = 1;
+        if (setsockopt(baseSock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int)) < 0)
+            regError("ERROR setsockopt Failure",__LINE__,errno);
+
         portNum = atoi(argv[1]); //Store port number
 
         //Build sockaddr_in struct (3 steps)
