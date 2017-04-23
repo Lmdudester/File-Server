@@ -14,7 +14,11 @@
 #define O_RDWR 2
 #define MIN_BUFF_SIZE 5
 
+
+/*_____GLOBAL VARIABLES_____*/
+
 static struct hostent *verifiedServer = NULL;
+
 
 /*____FUNCTION HELPERS____*/
 
@@ -41,6 +45,16 @@ char * tryNum(char * ascii, int max_size) {
         return ascii;
 }
 
+/* __myatosizet()__
+ *  - Turns an ascii value of a given length into a size_t variable
+ *
+ *  Arguments:
+ *    msgSize - length of the number in characters
+ *    msg - the number in ascii form (leftmost digit)
+ *
+ *  Returns:
+ *    - size_t representation for the ascii values given
+ */
 size_t myatosizet(int msgSize, char * msg){
         size_t ret = 0;
 
@@ -62,7 +76,16 @@ size_t myatosizet(int msgSize, char * msg){
         return ret; //return the atoi version of the number.
 }
 
-//returns the length of an int
+/* __intLength()__
+ *  - Determines the number of chars needed to represent an int
+ *
+ *  Arguments:
+ *    num - the int in question
+ *
+ *  Returns:
+ *    - An int containing the number of chars needed to represent
+ *        the argument int
+ */
 int intLength (int num){
         int count = 0;
         if(num < 0){
@@ -78,7 +101,16 @@ int intLength (int num){
         return count;
 }
 
-//DONE
+/* __size_tLength()__
+ *  - Determines the number of chars needed to represent a size_t
+ *
+ *  Arguments:
+ *    num - the size_t in question
+ *
+ *  Returns:
+ *    - An int containing the number of chars needed to represent
+ *        the argument size_t
+ */
 int size_tLength(size_t num){
   int count = 0;
   if(num < 0){
@@ -94,7 +126,16 @@ int size_tLength(size_t num){
   return count;
 }
 
-//DONE
+/* __getSock()__
+ *  - Opens a socket based on the verifiedServer created by netinit
+ *
+ *  Arguments:
+ *    N/A
+ *
+ *  Returns:
+ *    - A int representing the fd of the socket
+ *    - -1 otherwise
+ */
 int getSock(){
   if(verifiedServer == NULL){
     errno = EPERM;
@@ -130,7 +171,19 @@ int getSock(){
   return sockfd;
 }
 
-//DONE
+/* __readFromServer()__
+ *  - Returns a malloced string containing the message from server,
+ *      given an open sockfd
+ *
+ *  Arguments:
+ *    sockfd - the socket to read from
+ *    retSize - a pointer to an int where the size of the returned sting will
+ *                be stored
+ *
+ *  Returns:
+ *    - a malloced pointer to the first ',' of the message
+ *    - NULL otherwise
+ */
 char * readFromServer(int sockfd, int * retSize){
   //Create buffer to read Packet Size
   char * init_buffer = malloc(1);
@@ -209,49 +262,12 @@ char * readFromServer(int sockfd, int * retSize){
   return msg;
 }
 
-//DONE
-void testStuff(){
-  int status, sockfd;
-  char buffer[250]; //For what to send to server
-
-  sockfd = getSock();
-  if(sockfd < 0){
-    printf("ERROR Use netinit first\n");
-    return;
-  }
-
-  //---- Successfully Connected ----//
-  printf("Enter Message: ");
-  bzero(buffer,250);
-  fgets(buffer, 250,stdin);
-
-  //Write this buffer to the socket
-  status = write(sockfd,buffer,250);
-  if (status < 0){
-       printf("ERROR writing to socket\n");
-       return;
-  }
-
-  //Zero out the buffer for a read
-  bzero(buffer,250);
-
-  //Read from the socket into the buffer
-  status = read(sockfd,buffer,250);
-  if (status < 0){
-       printf("ERROR reading from socket\n");
-       return;
-  }
-
-  //Close the socket using sockfd
-  close(sockfd);
-
-  //Print read information
-  printf("Ret Msg: %s\n", buffer);
-}
 
 /*____NET-FUNCTIONS____*/
 
-//DONE
+/* __netserverinit()__
+ *  - SEE SPEC
+ */
 int netserverinit(char * hostname){
   verifiedServer = gethostbyname(hostname);
   if (verifiedServer == NULL) {
@@ -262,7 +278,9 @@ int netserverinit(char * hostname){
   return 0;
 }
 
-//DONE
+/* __netopen()__
+ *  - SEE SPEC
+ */
 int netopen(const char *pathname, int flags){
   //No path name
   if(pathname == NULL || strlen(pathname) <= 0){
@@ -368,7 +386,9 @@ int netopen(const char *pathname, int flags){
   return ret;
 }
 
-//DONE
+/* __netread()__
+ *  - SEE SPEC
+ */
 ssize_t netread(int fildes, void * buf, size_t nbyte){
   //If attempting a read less than 0 bytes
   if(nbyte <= 0 || fildes >= -1){
@@ -469,7 +489,9 @@ ssize_t netread(int fildes, void * buf, size_t nbyte){
   return retVal;
 }
 
-//DONE
+/* __netwrite()__
+ *  - SEE SPEC
+ */
 ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
   //If attempting a write less than 0 bytes
   if(nbyte <= 0 || fildes >= -1){
@@ -565,7 +587,9 @@ ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
   return retVal;
 }
 
-//DONE
+/* __netclose()__
+ *  - SEE SPEC
+ */
 int netclose(int fd){ //<msg size>,<op>,<fd>,c
   if(fd >= -1){
     errno = EINVAL;

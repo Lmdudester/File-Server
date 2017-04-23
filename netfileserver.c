@@ -11,13 +11,20 @@
 #include <errno.h>
 
 #define MIN_BUFF_SIZE 5
+
+/*_____STRUCTS_____*/
+
 typedef struct node {
         int fd; //file descriptor (the postivie one)
         struct node* next;
 } node_t;
 
+
+/*_____GLOBAL VARIABLES_____*/
+
 node_t* front = NULL;
 pthread_mutex_t mutexLL = PTHREAD_MUTEX_INITIALIZER;
+
 
 /*_____HELPER FUNCTIONS FOR LOCAL FUNCTIONS_____*/
 
@@ -43,7 +50,16 @@ int intComp(int int1, int int2){
         }
 }
 
-//returns the length of an int
+/* __intLength()__
+ *  - Determines the number of chars needed to represent an int
+ *
+ *  Arguments:
+ *    num - the int in question
+ *
+ *  Returns:
+ *    - An int containing the number of chars needed to represent
+ *        the argument int
+ */
 int intLength (int num){
         int count = 0;
         if(num < 0){
@@ -59,7 +75,16 @@ int intLength (int num){
         return count;
 }
 
-
+/* __myatoi()__
+ *  - Turns an ascii value of a given length into an int
+ *
+ *  Arguments:
+ *    msgSize - length of the number in characters
+ *    msg - the number in ascii form (leftmost digit)
+ *
+ *  Returns:
+ *    - int representation for the ascii values given
+ */
 int myatoi(int msgSize, char * msg){
         int ret = 0;
 
@@ -106,12 +131,11 @@ char * tryNum(char * ascii, int max_size) {
 
 /*_____NODE FUNCTIONS_____*/
 
-/*
- * Function: createNode
+/* Function: createNode
  * --------------------
  * creates a node that can be used in a linked list
  *
- * token: the token that is to be placed
+ *  fd: the fd for the node
  *
  *  returns: pointer to the node
  */
@@ -131,14 +155,11 @@ node_t * createNode(int fd){
         return newNode;
 }
 
-/*
- * Function: placeNode
+/* Function: placeNode
  * --------------------
  * Places the given node in the linked list
  *
- * word: the token
- * filename: the corresponding file name
- * front: pointer to the head of the list
+ * node: node to be placed
  *
  *  returns: 0 for success, -1 for error
  */
@@ -197,11 +218,13 @@ int placeNode (node_t* node){ //node_t* ins
         return 0;
 }
 
-/**
+/* Function: removeNode
+ * --------------------
  * Removes a node from the LL based off on the FD
- * @param  fd    file descriptor
- * @param  front pointer to the front of the LL
- * @return       0 on success, -1 on failure
+ *
+ * fd: file descriptor
+ *
+ *  returns: 0 for success, -1 for error
  */
 int removeNode(int fd){
         pthread_mutex_lock(&mutexLL);
@@ -239,7 +262,14 @@ int removeNode(int fd){
         return 0;
 }
 
-//return -1 on not found, -2 on LL empty. 1 if found
+/* Function: findNode
+ * --------------------
+ * Finds a node from the LL based off on the FD
+ *
+ * fd: file descriptor
+ *
+ *  returns: -1 on not found, -2 on LL empty. 1 if found
+ */
 int findNode(int fd){
         pthread_mutex_lock(&mutexLL);
         if (front == NULL) {
@@ -268,6 +298,7 @@ int findNode(int fd){
         }
 }
 
+//FOR TESTING ONLY
 void printLL(){
         pthread_mutex_lock(&mutexLL);
         node_t* temp = front;
@@ -278,6 +309,7 @@ void printLL(){
         printf("printLL complete\n");
         pthread_mutex_unlock(&mutexLL);
 }
+
 
 /*_____ERROR FUNCTIONS_____*/
 
@@ -311,6 +343,7 @@ void regError(const char * msg, int line, int errNum) {
 void threadError(const char * msg, int line, int errNum) {
         fprintf(stderr,"%s ERRNO: \"%s\" L:%d\n",msg, strerror(errNum), line);
 }
+
 
 /*_____FILE METHODS_____*/
 
@@ -942,6 +975,7 @@ void * clientHandler(void * sock) {
         free(sock);
         pthread_exit(0);
 }
+
 
 /*_____MAIN_____*/
 
