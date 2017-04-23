@@ -371,7 +371,7 @@ int netopen(const char *pathname, int flags){
 //DONE
 ssize_t netread(int fildes, void * buf, size_t nbyte){
   //If attempting a read less than 0 bytes
-  if(nbyte < 0){
+  if(nbyte =< 0){
     errno = EINVAL;
     return -1;
   }
@@ -469,6 +469,105 @@ ssize_t netread(int fildes, void * buf, size_t nbyte){
   return retVal;
 }
 
+//DONE
+ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
+  //If attempting a write less than 0 bytes
+  if(nbyte =< 0){
+    errno = EINVAL;
+    return -1;
+  }
+
+  //Set up the size variable
+  int sendSize = intLength(fildes) + nbyte + 4;
+  int len = 0;
+
+  //Malloc the correct size for the message
+  char * sendMsg = malloc(sizeof(char)*(sendSize + intLength(sendSize)));
+  if(sendMsg == NULL) //Errno set by malloc
+    return -1;
+
+  //Print in the size
+  sprintf(sendMsg, "%i", sendSize);
+  len += intLength(sendSize);
+
+  //Print read command
+  sendMsg[len] = ',';
+  sendMsg[len+1] = 'w';
+  sendMsg[len+2] = ',';
+  len += 3;
+
+  //Convert fd
+  char buff1[intLength(fildes)];
+  sprintf(buff1, "%i", fildes);
+  memcpy(sendMsg+len, buff1, intLength(fildes));
+  sendMsg[len+intLength(fildes)] = ',';
+  len += intLength(fildes) + 1;
+
+  //Copy bytes to be written
+  memcpy(sendMsg+len,buf,nbyte);
+
+  //printf("Message: %s Length: %d\n", sendMsg, sendSize);
+
+  //Correct size to invlude ascii size
+  sendSize += intLength(sendSize);
+
+  //Open a socket
+  int sockfd = getSock();
+  if(sockfd == -1)
+    return -1;
+
+  //Write to the server
+  int status;
+  status = write(sockfd,sendMsg,sendSize);
+  if (status < 0){
+    errno = TRY_AGAIN;
+    return -1;
+  }
+
+  //We're done with sendMsg so free it
+  free(sendMsg);
+
+  //Read from the server
+  int msgSize;
+  char * msg = readFromServer(sockfd, &msgSize); //Get malloced message
+  if(msg == NULL) //Errno set by readFromServer
+    return -1;
+
+  //Done with server interaction, so close the socket
+  close(sockfd);
+
+  //printf("Ret Msg: %s Ret Size: %d",msg,msgSize);
+
+  //Get return Value
+  char * ptr = msg + 1;
+  char * end = tryNum(ptr,msgSize - 1);
+  if(end == NULL){
+    errno = TRY_AGAIN;
+    return -1;
+  }
+
+  size_t retVal = myatosizet((end - ptr), ptr);
+
+  //Set errno code
+  msgSize -= (end - ptr) + 2;
+  ptr = end + 1;
+  end = tryNum(ptr,msgSize);
+  if(end == NULL){
+    errno = TRY_AGAIN;
+    return -1;
+  }
+  *end = '\0';
+  errno = atoi(ptr);
+  *end = ',';
+
+  msgSize -= (end - ptr) + 1;
+  ptr += (end - ptr) + 1;
+
+  //Free msg now that were done
+  free(msg);
+
+  return retVal;
+}
 
 int main(int argc, char *argv[]) {
     if(argc < 3){
@@ -478,18 +577,18 @@ int main(int argc, char *argv[]) {
 
     if(netserverinit(argv[1]) == 0){
       printf("Host Does Exist.\n");
-      testStuff();
+      //testStuff();
     } else {
       printf("Error, bad host");
     }
-    /*
-    if(argc == 3){
+
+    //if(argc == 3){
       //Test netopen
       int fd = netopen(argv[2],O_RDWR);
 
       printf("Returned Open: %d ", fd);
       printf("Errno: %s - %d\n\n", strerror(errno), errno);
-    }*/
+    //}
 
     return 0;
 }
