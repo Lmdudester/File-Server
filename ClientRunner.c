@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
     buff[0] = '\0';
     strcpy(buff,"Hello my dude!");
 
-    printf("Returned Write: %zu ", netwrite(fd, buff, 14));
+    printf("Returned Write: %zd ", netwrite(fd, buff, 14));
     printf("Errno: %s - %d\n\n", strerror(errno), errno);
 
     printf("Returned Close: %d ", netclose(fd));
@@ -39,17 +39,17 @@ int main(int argc, char *argv[]) {
     printf("Returned Open: %d ", fd);
     printf("Errno: %s - %d\n\n", strerror(errno), errno);
 
-    printf("Returned Read: %zu ", netread(fd, buff, 5));
+    printf("Returned Read: %zd ", netread(fd, buff, 5));
     printf("Errno: %s - %d\n\n", strerror(errno), errno);
     printf("First 5: %s\n", buff);
     bzero(buff,15);
 
-    printf("Returned Read: %zu ", netread(fd, buff, 4));
+    printf("Returned Read: %zd ", netread(fd, buff, 4));
     printf("Errno: %s - %d\n\n", strerror(errno), errno);
     printf("First 5: %s\n", buff);
     bzero(buff,15);
 
-    printf("Returned Read: %zu ", netread(fd, buff, 5));
+    printf("Returned Read: %zd ", netread(fd, buff, 5));
     printf("Errno: %s - %d\n\n", strerror(errno), errno);
     printf("First 5: %s\n", buff);
     bzero(buff,15);

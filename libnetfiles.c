@@ -282,6 +282,12 @@ int netserverinit(char * hostname){
  *  - SEE SPEC
  */
 int netopen(const char *pathname, int flags){
+  //MAKE SURE NETINIT WAS CALLED
+  if(verifiedServer == NULL){
+    errno = EPERM;
+    return -1;
+  }
+
   //No path name
   if(pathname == NULL || strlen(pathname) <= 0){
     errno = EINVAL;
@@ -390,10 +396,21 @@ int netopen(const char *pathname, int flags){
  *  - SEE SPEC
  */
 ssize_t netread(int fildes, void * buf, size_t nbyte){
+  //MAKE SURE NETINIT WAS CALLED
+  if(verifiedServer == NULL){
+    errno = EPERM;
+    return -1;
+  }
+
   //If attempting a read less than 0 bytes
-  if(nbyte <= 0 || fildes >= -1){
+  if(nbyte < 0 || fildes >= -1){
     errno = EINVAL;
     return -1;
+  }
+
+  //Skip it all if its just 0
+  if(nbyte == 0){
+    return 0;
   }
 
   //Set up the size variable
@@ -493,10 +510,21 @@ ssize_t netread(int fildes, void * buf, size_t nbyte){
  *  - SEE SPEC
  */
 ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
+  //MAKE SURE NETINIT WAS CALLED
+  if(verifiedServer == NULL){
+    errno = EPERM;
+    return -1;
+  }
+
   //If attempting a write less than 0 bytes
-  if(nbyte <= 0 || fildes >= -1){
+  if(nbyte < 0 || fildes >= -1){
     errno = EINVAL;
     return -1;
+  }
+
+  //Skip it all if its just 0
+  if(nbyte == 0){
+    return 0;
   }
 
   //Set up the size variable
@@ -590,7 +618,14 @@ ssize_t netwrite(int fildes, const void *buf, size_t nbyte){
 /* __netclose()__
  *  - SEE SPEC
  */
-int netclose(int fd){ //<msg size>,<op>,<fd>,c
+int netclose(int fd){
+  //MAKE SURE NETINIT WAS CALLED
+  if(verifiedServer == NULL){
+    errno = EPERM;
+    return -1;
+  }
+
+  //If file desciptor is invalid
   if(fd >= -1){
     errno = EINVAL;
     return -1;
