@@ -1,6 +1,3 @@
-#include <stdio.h>
-#include <errno.h>
-#include <string.h>
 #include "libnetfiles.h"
 
 int main(int argc, char *argv[]) {
@@ -9,7 +6,7 @@ int main(int argc, char *argv[]) {
       return -1;
     }
 
-    if(netserverinit(argv[1]) == 0){
+    if(netserverinit(argv[1], TRANS) == 0){
       printf("Host Does Exist.\n");
     } else {
       printf("Error, bad host");

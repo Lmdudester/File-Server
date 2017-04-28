@@ -15,9 +15,18 @@
 
 /*_____STRUCTS_____*/
 
+typedef struct _fdNode{
+  int fd;
+  struct _fdNode * next;
+} fdNode;
+
 typedef struct node {
-        int fd; //file descriptor (the postivie one)
-        struct node* next;
+        char * filename;
+        fdNode * fds;
+        //u - unrestricted, e/x - exclusive/exclusive & w is open, t - transaction
+        char fmode;
+        int wOpen;
+        struct node * next;
 } node_t;
 
 
@@ -26,6 +35,363 @@ typedef struct node {
 node_t* front = NULL;
 pthread_mutex_t mutexLL = PTHREAD_MUTEX_INITIALIZER;
 
+/*_____ADD NODE FUNCTIONS_____*/
+
+/* Function: createNode
+ * --------------------
+ * - creates a node that can be used in a linked list
+ *
+ * filename: the path of the file assocated with the node and fd List
+ * fd: the first fd for the node
+ * mode: the mode in which the file is attempting to be opened
+ *
+ * returns: pointer to the node
+ */
+node_t * createNode(char * filename, int fd, char mode) {
+  //Malloc for actual node
+  node_t * newNode = malloc(sizeof(node_t));
+  if(newNode == NULL)
+    return NULL;
+
+  //Place mode in
+  (*newNode).fmode = mode;
+
+  //Place filename in
+  (*newNode).filename = malloc(sizeof(char)*(strlen(filename)+1));
+  if((*newNode).filename == NULL)
+    return NULL;
+  (*((*newNode).filename)) = '\0';
+  strcpy((*newNode).filename,filename);
+
+  //Prepare file desciptor list
+  (*newNode).fds = malloc(sizeof(fdNode));
+  if((*newNode).fds == NULL)
+    return NULL;
+  (*((*newNode).fds)).fd = fd;
+
+  //Set next to NULL
+  (*newNode).next = NULL;
+
+  //Set wOpen to 0
+  (*newNode).wOpen = 0;
+
+  return newNode;
+}
+
+/* Function: addfd
+ * --------------------
+ * - adds a fd to the file descriptor list
+ *
+ * ptr: the node to add the fd to
+ * rdwr: the read/write privleges of the fd
+ * oneOrTwo: the postion to place the node in ('1' or '2')
+ *
+ * returns: the opened fd if success, -1 if error
+ */
+int addfd(node_t * ptr, int rdwr, int index){
+  //Attempt to open
+  int fd = open((*ptr).filename, rdwr);
+  if(fd == -1)
+    return fd;
+
+  //Malloc new fdNode
+  fdNode * newfdNode = malloc(sizeof(fdNode));
+  if(newfdNode == NULL)
+    return -1;
+
+  //Place fd in fdNode
+  (*newfdNode).fd = fd;
+
+  //Place it in the list
+  if(index == 1){
+    (*newfdNode).next = (*ptr).fds;
+    (*ptr).fds = newfdNode;
+
+    return fd;
+  }
+
+  fdNode * fdptr = (*ptr).fds;
+
+  index -= 2;
+  while(index != 0){
+    fdptr = (*fdptr).next;
+    index--;
+  }
+
+  (*newfdNode).next = (*fdptr).next;
+  (*fdptr).next = newfdNode;
+
+  return fd;
+}
+
+/* Function: findByName
+ * --------------------
+ * - Locates a node by the filename
+ *
+ * filename: the file path assocated with the node
+ *
+ * returns: a pointer to the node_t if found, NULL otherwise
+ */
+node_t * findByName(char * filename) {
+  node_t * ptr = front;
+
+  while(ptr != NULL){
+    if(strcmp(filename, (*ptr).filename) == 0){ //They're the same
+      return ptr;
+    }
+    //Otherwise continue
+    ptr = (*ptr).next;
+  }
+
+  return NULL;
+}
+
+/* Function: handleAddNode
+ * --------------------
+ * - Given what open needs and a mode, will determine if the file can
+ *     be opened and take the steps needed to open it
+ *
+ * filename: the file path assocated with the node
+ * rdwr: the requested read/write privleges of the file
+ * mode: 'u'/'e'/'t' to represent the file modes
+ *
+ * returns: the fd if opened, -1 otherwise
+ */
+int handleAddNode(char * filename, int rdwr, char mode) {
+  node_t * ptr = findByName(filename);
+
+  if(ptr == NULL){ //File is not open yet
+    //Attempt to open file
+    int fd = open(filename, rdwr);
+    if(fd == -1)
+      return -1;
+
+    //Create a node with correct parameters
+    switch(mode){
+      case 'u': //Unrestricted
+        if(rdwr != O_RDONLY) {
+          ptr = createNode(filename, fd, 'u');
+          (*ptr).wOpen += 1;
+        } else {
+          ptr = createNode(filename, fd, 'u');
+        }
+        break;
+
+      case 'e': //Exclusive
+        if(rdwr == O_RDONLY) //No write permission is open
+          ptr = createNode(filename, fd, 'e');
+        else //It has write permission open
+          ptr = createNode(filename, fd, 'x');
+        break;
+
+      case 't': //Transaction
+        ptr = createNode(filename, fd, 't');
+        break;
+    }
+
+    //Node creation failure
+    if(ptr == NULL)
+      return -1;
+
+    //Update front and return with success
+    (*ptr).next = front;
+    front = ptr;
+    return fd;
+
+  }
+
+  //File is open. -- In what mode?
+  switch((*ptr).fmode) {
+    case 'u': //unrestricted
+      //If its transaction mode
+      if(mode == 't'){
+        errno = EACCES;
+        return -1;
+      }
+
+      //If its exclusive mode
+      if(mode == 'e') {
+        if((*ptr).wOpen == 1){ //Open in write
+          if(rdwr == O_RDONLY){ //Trying to read
+            (*ptr).fmode = 'x';
+            return addfd(ptr, rdwr, 2);
+          }
+        } else if((*ptr).wOpen == 0){ //Not open in write
+          if(rdwr == O_RDONLY){ //Trying to read
+            (*ptr).fmode = 'e';
+            return addfd(ptr, rdwr, 1);
+          } //Trying to write
+          (*ptr).fmode = 'x';
+          return addfd(ptr, rdwr, 1);
+        }
+        errno = EACCES;
+        return -1;
+      }
+
+      //Opening in write - 'u'
+      if(rdwr != O_RDONLY){
+        (*ptr).wOpen += 1;
+        return addfd(ptr, rdwr, 1);
+      }
+
+      //Opening in read - 'u'
+      return addfd(ptr, rdwr, (*ptr).wOpen + 1);
+
+    case 'e': //exclusive
+      //If its transaction mode
+      if(mode == 't') {
+        errno = EACCES;
+        return -1;
+      }
+
+      if(rdwr == O_RDONLY){ //Add it
+        return addfd(ptr, rdwr, 1);
+      }
+      //Set to 'x' and add it
+      (*ptr).fmode = 'x';
+      return addfd(ptr, rdwr, 1);
+
+    case 'x': //exclusive & w is open
+      //If its transaction mode
+      if(mode == 't'){
+        errno = EACCES;
+        return -1;
+      }
+
+      if(rdwr == O_RDONLY){ //Add it
+        return addfd(ptr, rdwr, 2);
+      }
+
+      errno = EACCES; //errno permission denied
+      return -1;
+
+    case 't': //transaction
+      errno = EACCES; //errno permission denied
+      return -1;
+  }
+
+  //Something went hoibly wrong
+  return - 1;
+}
+
+/*_____DELETE NODE FUNCTIONS_____*/
+
+/* Function: handleRemoveNode
+ * --------------------
+ * - Will locate a file descriptor and remove it (or the whole node)
+ *    depending on what is required (also updates mode if needed)
+ *
+ * fd: the fd to be removed
+ *
+ * returns: 0 if it was removed, -1 otherwise
+ */
+int handleRemoveNode(int fd){
+  if(fd < 0){
+    errno = EINVAL;
+    return -1;
+  }
+
+  //Locate by fd
+  node_t * prv = NULL;
+  node_t * ptr = front;
+  fdNode * prvfd;
+  fdNode * ptrfd;
+  char boole = 'f';
+  int fdNum = 1;
+
+  while(ptr != NULL){
+    ptrfd = (*ptr).fds;
+    prvfd = NULL;
+
+    while(ptrfd != NULL){
+      if((*ptrfd).fd == fd){
+        boole = 't';
+        break;
+      }
+
+      prvfd = ptrfd;
+      ptrfd = (*ptrfd).next;
+      fdNum++;
+    }
+    if(boole == 't')
+      break;
+
+    prv = ptr;
+    ptr = (*ptr).next;
+    fdNum = 1;
+  }
+
+  if(ptr == NULL) //Didn't find it
+    return -1;
+
+  if(close((*ptrfd).fd) == -1) //Close it
+    return -1;
+
+  //If it was open in write mode, adjust the counter
+  if((*ptr).fmode == 'u'){
+    if(fdNum <= (*ptr).wOpen){
+      (*ptr).wOpen -= 1;
+    }
+  }
+
+  if(prvfd == NULL) { //Its the first fd in the list
+    if((*ptrfd).next == NULL){ //Its the only fd in the list (NODE DELETE)
+      if(prv == NULL){ //Update front
+        free(ptrfd);
+        free((*ptr).filename);
+        front = (*ptr).next;
+        free(ptr);
+        return 0;
+
+      } //No front Update
+      free(ptrfd);
+      free((*ptr).filename);
+      (*prv).next = (*ptr).next;
+      free(ptr);
+      return 0;
+
+    } //There are fds after it (no node delete) (update fds) - first fd
+
+    //Alter filemode for exclusive
+    if((*ptr).fmode == 'x')
+      (*ptr).fmode = 'e';
+
+    (*ptr).fds = (*ptrfd).next;
+    free(ptrfd);
+    return 0;
+
+  } //Its not the first fd in the list (no node delete)
+  (*prvfd).next = (*ptrfd).next;
+  free(ptrfd);
+  return 0;
+
+}
+
+/*_____LOCATE FD FUNCTIONS_____*/
+
+/* Function: inList
+ * --------------------
+ * - Will locate a file descriptor and tell you its there if it is
+ *
+ * fd: the fd to be found
+ *
+ * returns: 0 if it was found, -1 otherwise
+ */
+int inList(int fd){
+  node_t * ptr = front;
+
+  while(ptr != NULL){
+    fdNode * fdPtr = (*ptr).fds;
+    while(fdPtr != NULL){
+      if((*fdPtr).fd == fd)
+        return 0;
+
+      fdPtr = (*fdPtr).next;
+    }
+    ptr = (*ptr).next;
+  }
+  return -1;
+}
 
 /*_____HELPER FUNCTIONS FOR LOCAL FUNCTIONS_____*/
 
@@ -130,188 +496,6 @@ char * tryNum(char * ascii, int max_size) {
 }
 
 
-/*_____NODE FUNCTIONS_____*/
-
-/* Function: createNode
- * --------------------
- * creates a node that can be used in a linked list
- *
- *  fd: the fd for the node
- *
- *  returns: pointer to the node
- */
-node_t * createNode(int fd){
-        //Mallocs space for node
-        node_t * newNode = malloc(sizeof(node_t));
-        if (newNode == NULL) {
-                fprintf(stderr, "Malloc failed.\n");
-        }
-
-        //Set fd to given fd, but negated
-        (*newNode).fd = fd;
-
-        //Set next to NULL
-        (*newNode).next = NULL;
-
-        return newNode;
-}
-
-/* Function: placeNode
- * --------------------
- * Places the given node in the linked list
- *
- * node: node to be placed
- *
- *  returns: 0 for success, -1 for error
- */
-int placeNode (node_t* node){ //node_t* ins
-        pthread_mutex_lock(&mutexLL);
-        node_t * ins;
-        if(front == NULL) { //If LL is empty
-                ins = node;
-                front = ins;
-                pthread_mutex_unlock(&mutexLL);
-                return 0;
-        }
-
-        int cmp = intComp((*node).fd,(*front).fd);
-
-        if(cmp != 2) { //If ins is belongs at the front
-                if(cmp == 0) { //INCREMENT
-                        front = front;
-                        pthread_mutex_unlock(&mutexLL);
-                        return 0;
-                }
-                ins = node;
-                (*ins).next = front;
-                front = ins;
-                pthread_mutex_unlock(&mutexLL);
-                return 0;
-        }
-
-        node_t * ptr = (*front).next; //Track the current comparison node
-        node_t * prv = front; //Keep the link to the previous one
-
-        while(ptr != NULL) { //It belongs somwehere between two nodes
-                cmp = intComp((*node).fd,(*ptr).fd);
-                if(cmp != 2) {
-                        if(cmp == 0) {
-                                front = front;
-                                pthread_mutex_unlock(&mutexLL);
-                                return 0;
-                        }
-                        ins = node;
-                        (*ins).next = ptr;
-                        (*prv).next = ins;
-
-                        front = front;
-                        pthread_mutex_unlock(&mutexLL);
-                        return 0;
-                }
-                prv = ptr;
-                ptr = (*ptr).next;
-        }
-
-        //It belongs at the end of the LL
-        ins = node;
-        (*prv).next = ins;
-        pthread_mutex_unlock(&mutexLL);
-        return 0;
-}
-
-/* Function: removeNode
- * --------------------
- * Removes a node from the LL based off on the FD
- *
- * fd: file descriptor
- *
- *  returns: 0 for success, -1 for error
- */
-int removeNode(int fd){
-        pthread_mutex_lock(&mutexLL);
-        //if the node to delete is the front
-        if ((*front).fd == fd) {
-                front = (*front).next;
-                pthread_mutex_unlock(&mutexLL);
-                return 0;
-        }
-
-        node_t* ptr = (*front).next;
-        node_t* prv = front;
-
-        while(ptr != NULL) {
-                if ((*ptr).fd == fd) { //a match has been found
-                        //if it is the last node
-                        if((*ptr).next == NULL) {
-                                (*prv).next = NULL;
-                                front = front;
-                                pthread_mutex_unlock(&mutexLL);
-                                return 0;
-                        } else { //in the middle
-                                (*prv).next = (*ptr).next;
-                                front = front;
-                                pthread_mutex_unlock(&mutexLL);
-                                return 0;
-                        }
-                } else { //a match hasn't been found
-                        prv = ptr;
-                        ptr = (*ptr).next;
-                }
-        }
-        front = front;
-        pthread_mutex_unlock(&mutexLL);
-        return 0;
-}
-
-/* Function: findNode
- * --------------------
- * Finds a node from the LL based off on the FD
- *
- * fd: file descriptor
- *
- *  returns: -1 on not found, -2 on LL empty. 1 if found
- */
-int findNode(int fd){
-        pthread_mutex_lock(&mutexLL);
-        if (front == NULL) {
-                pthread_mutex_unlock(&mutexLL);
-                return -2; //there's nothing in the list, nothing will be found
-        }
-        node_t* temp = front;
-
-        int status = 0;
-        while (temp != NULL && status != -1) {
-                if ((*temp).fd == fd) {
-                        pthread_mutex_unlock(&mutexLL);
-                        return 1;
-                } else if ((*temp).fd < fd) {
-                        temp = (*temp).next; //move to the next node
-                        status = 0;
-                } else if ((*temp).fd > fd)
-                        status = -1;
-        }
-        pthread_mutex_unlock(&mutexLL);
-
-        if (status == 0) {
-                return -1; //generic node not found error
-        } else {
-                return status; //the node wasn't found, return the actual status
-        }
-}
-
-//FOR TESTING ONLY
-void printLL(){
-        pthread_mutex_lock(&mutexLL);
-        node_t* temp = front;
-        while(temp != NULL) {
-                printf("Node: fd - '%i'\n", (*temp).fd);
-                temp = (*temp).next;
-        }
-        printf("printLL complete\n");
-        pthread_mutex_unlock(&mutexLL);
-}
-
-
 /*_____ERROR FUNCTIONS_____*/
 
 /* __regError()__
@@ -362,7 +546,7 @@ void threadError(const char * msg, int line, int errNum) {
  *    - A pointer to a dynamically allocated string containing an error code
  *        and an ascii representation of the negated file descriptor
  *
- *    Input Message Format: "<permissions>,<File path>"
+ *    Input Message Format: "<permissions>,<fmode>,<File path>"
  *    Return Message Format: "<msgsize>,<error code>,<negfd>"
  *
  *      *Note: retMsgSize is the number of bytes malloced for returned msg
@@ -379,24 +563,38 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
         msg += 2;
         msgSize -= 2;
 
+        //Read fmode from message
+        char fmode = *msg;
+        msg += 2;
+        msgSize -= 2;
+
         (*retMsgSize) = 0;
+
+        //Lock to interact with LL
+        pthread_mutex_lock(&mutexLL);
 
         switch(perm) {
           case 'r': //read-only
-            fd = open(msg, O_RDONLY);
+            fd = handleAddNode(msg, O_RDONLY, fmode);
+            //open(msg, O_RDONLY);
             break;
 
           case 'w': //write-only
-            fd = open(msg, O_WRONLY);
+            fd = handleAddNode(msg, O_WRONLY, fmode);
+            //open(msg, O_WRONLY);
             break;
 
           case 'b': //both
-            fd = open(msg, O_RDWR);
+            fd = handleAddNode(msg, O_RDWR, fmode);
+            //open(msg, O_RDWR);
             break;
 
           default: //data was corrupted
             fd = -1;
         }
+
+        //Unlock, done with LL
+        pthread_mutex_unlock(&mutexLL);
 
         //TODO wrap the malloc statements in an if to catch any errors
         if(fd < 0) { //open has encountered an error
@@ -451,9 +649,6 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
 
                 return retMsg;
         } else {
-                //okay, now it worked so the first thing we should do is to update the linked list
-                placeNode(createNode(fd)); //creates and places a node
-
                 //let's set the newMsgSize to 0 in case this isnt the first return
                 newMsgSize = 0;
                 len = 0;
@@ -526,10 +721,22 @@ char * localOpen(int msgSize, char * msg, int * retMsgSize){
 char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
         //let's gather what we need
         int fd = -1 * negfd;
+        int status;
+
         int readNumLen = myatoi(msgSize, msg);
 
-        char* buffer = malloc(sizeof(char)*readNumLen); //make a buffer to hold the string that is read
-        int status = read(fd, buffer, (size_t)readNumLen);
+        char * buffer = malloc(sizeof(char)*readNumLen); //make a buffer to hold the string that is read
+
+        //Lock to interact with LL
+        pthread_mutex_lock(&mutexLL);
+
+        status = inList(fd);
+
+        //Unlock, done with LL
+        pthread_mutex_unlock(&mutexLL);
+
+        if(status == 0)
+          status = read(fd, buffer, (size_t)readNumLen);
 
         int newMsgSize = 0; //initalizes newMsgSize
 
@@ -622,11 +829,22 @@ char * localRead(int msgSize, char * msg, int negfd, int * retMsgSize){
  */
 char * localWrite(int msgSize, char * msg, int negfd, int * retMsgSize){
         int newMsgSize = 0;
+        int status = 0;
 
         //staging - getting all of the parts of what we need
         //write needs the fd, so lets flip it
         int fd = -1 * negfd;
-        int status = write(fd, msg, msgSize); //actually preform the write
+
+        //Lock to interact with LL
+        pthread_mutex_lock(&mutexLL);
+
+        status = inList(fd);
+
+        //Unlock, done with LL
+        pthread_mutex_unlock(&mutexLL);
+
+        if(status == 0)
+          status = write(fd, msg, msgSize); //actually preform the write
 
         if (status <= 0) {
                 int errorcode = errno;
@@ -708,15 +926,13 @@ char * localClose(int negfd, int * retMsgSize){
         int newMsgSize = 0;
         size_t len;
 
-        int closed;
-        int found = findNode(fd);
+        //Lock to interact with LL
+        pthread_mutex_lock(&mutexLL);
 
-        if(found != 1){ //Didn't find it
-          errno = EBADF;
-          closed = -1;
-        } else {
-          closed = close(fd);
-        }
+        int closed = handleRemoveNode(fd);
+
+        //Unlock, done with LL
+        pthread_mutex_unlock(&mutexLL);
 
         //let's first see if the file exists
         if (closed == -1) { //An error occured
@@ -760,9 +976,6 @@ char * localClose(int negfd, int * retMsgSize){
         } else {
                 len = 0;
 
-                //okay, now it worked so the first thing we should do is to update the linked list
-                removeNode(fd); //removes node
-
                 //let's set the returnMsgSize to 0 in case this isnt the first return
                 (*retMsgSize) = 5;
 
@@ -785,7 +998,7 @@ char * localClose(int negfd, int * retMsgSize){
  *  Returns:
  *    N/A
  *
- *    Message format: "size,op,fd,<permissions>,data"
+ *    Message format: "size,op,fd,<permissions>,<mode>,data"
  */
 void * clientHandler(void * sock) {
         char buffer[250]; //Buffer for reading input and writing output

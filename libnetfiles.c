@@ -7,17 +7,20 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <errno.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define PORTNUM 10897
-#define O_RDONLY 0
-#define O_WRONLY 1
-#define O_RDWR 2
 #define MIN_BUFF_SIZE 5
 
+#define UNRST 0
+#define EXCLU 1
+#define TRANS 2
 
 /*_____GLOBAL VARIABLES_____*/
 
 static struct hostent *verifiedServer = NULL;
+static char fmode = '\0';
 
 
 /*____FUNCTION HELPERS____*/
@@ -268,10 +271,29 @@ char * readFromServer(int sockfd, int * retSize){
 /* __netserverinit()__
  *  - SEE SPEC
  */
-int netserverinit(char * hostname){
+int netserverinit(char * hostname, int filemode){
   verifiedServer = gethostbyname(hostname);
   if (verifiedServer == NULL) {
       h_errno = HOST_NOT_FOUND;
+      return -1;
+  }
+
+  //Set the filemode
+  switch(filemode){
+    case UNRST:
+      fmode = 'u';
+      break;
+
+    case EXCLU:
+      fmode = 'e';
+      break;
+
+    case TRANS:
+      fmode = 't';
+      break;
+
+    default:
+      errno = EINVAL;
       return -1;
   }
 
@@ -295,13 +317,13 @@ int netopen(const char *pathname, int flags){
   }
 
   //Improper flags
-  if(flags < 0 || flags > 2){
+  if(flags != O_RDONLY && flags != O_WRONLY && flags != O_RDWR){
     errno = EINVAL;
     return -1;
   }
 
   //Set up the size variable
-  int sendSize = strlen(pathname) + 6;
+  int sendSize = strlen(pathname) + 8; // 7 + null byte
   int len = 0;
 
   //Malloc the correct size for the message
@@ -328,6 +350,11 @@ int netopen(const char *pathname, int flags){
   }
   sendMsg[len+4] = ',';
   len += 5;
+
+  //Set file mode
+  sendMsg[len] = fmode;
+  sendMsg[len+1] = ',';
+  len += 2;
 
   //Copy file path will NULL byte
   memcpy(sendMsg+len, pathname, strlen(pathname) + 1);

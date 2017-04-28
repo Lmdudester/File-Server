@@ -1,15 +1,25 @@
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #ifndef _LIBNETFILES_H_
 #define _LIBNETFILES_H_
 
 #define PORTNUM 10897
-#define O_RDONLY 0
-#define O_WRONLY 1
-#define O_RDWR 2
+#define UNRST 0
+#define EXCLU 1
+#define TRANS 2
 #define MIN_BUFF_SIZE 5
 
-extern int netserverinit(char * hostname);
+extern int netserverinit(char * hostname, int filemode);
 
 extern int netopen(const char *pathname, int flags);
 
