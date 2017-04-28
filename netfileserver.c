@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <netinet/tcp.h>
 
 #define PORTNUM 10897
 #define MIN_BUFF_SIZE 5
@@ -1209,6 +1210,12 @@ int main(int argc, char *argv[]) {
         int one = 1;
         if (setsockopt(baseSock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int)) < 0)
             regError("ERROR setsockopt Failure",__LINE__,errno);
+
+        if (setsockopt(baseSock, SOL_SOCKET, SO_REUSEPORT,  &one, sizeof(int)) < 0)
+            regError("setsockopt(SO_REUSEPORT) failed",__LINE__,errno);
+
+        if(setsockopt(baseSock, IPPROTO_TCP, TCP_NODELAY,  &one, sizeof(int)) < 0)
+            regError("setsockopt(TCP_NODELAY) failed",__LINE__,errno);
 
         portNum = PORTNUM; //Store port number
 
